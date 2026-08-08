@@ -35,12 +35,23 @@ int main()
         if (w <= 0 || h <= 0) continue;
         framebuffer.resize((size_t)w * h);
 
+        DirectX::XMVECTOR lightDir = { -1.0f, -1.0f, 0.0f };
 
+        std::vector<Sphere> spheres = {};
 
-        Sphere sphere = {
-            {3.0f, 0.0f, 0.0f},
+        Sphere sphere1 = {
+            {{1.0f, 0.0f, 0.0f}},
+            {0.0f, 0.0f, 0.0f},
             1.0f,
         };
+
+        Sphere sphere2 = {
+            {{0.0f, 1.0f, 0.0f}},
+            {0.0f, -101.0f, 0.0f},
+            100.0f,
+        };
+
+        spheres = { sphere1, sphere2 };
 
         for (int y = 0; y < h; y++) {
             const float t = (h - 1 - y) / (float)h;
@@ -57,16 +68,37 @@ int main()
                 const uint32_t b = (uint32_t)(255.0f * (0.5f * d.z + 0.5f));
 
                 HitData hitData;
+                bool hit = false;
 
-                auto hitSphere = RaySphere(ray, sphere, 0.001f, 1000.0f, hitData);
+                for (auto& sphere : spheres) {
+                    auto hitSphere = RaySphere(ray, sphere, 0.001f, hitData.t, hitData);
+                    hit |= hitSphere;
+                }
 
-                if (hitSphere) {
+                if (hit) {
+
+                    Ray shadowRay = {
+                        hitData.point,
+                        DirectX::XMVector3Normalize(DirectX::XMVectorScale(lightDir, -1.0f)),
+                    };
+
+                    bool hitShadow = false;
+                    HitData shadowHitData;
+
+                    for (auto& sphere : spheres) {
+                        auto hitSphere = RaySphere(shadowRay, sphere, 0.001f, shadowHitData.t, shadowHitData);
+                        hitShadow |= hitSphere;
+                    }
+
                     DirectX::XMFLOAT3 n;
+                    DirectX::XMFLOAT3 c;
                     DirectX::XMStoreFloat3(&n, hitData.normal);
-                    const uint32_t nr = (uint32_t)(255.0f * (0.5f * n.x + 0.5f));
-                    const uint32_t ng = (uint32_t)(255.0f * (0.5f * n.y + 0.5f));
-                    const uint32_t nb = (uint32_t)(255.0f * (0.5f * n.z + 0.5f));
-                    framebuffer[(size_t)y * w + x] = (nr << 16) | (ng << 8) | nb;
+                    DirectX::XMStoreFloat3(&c, hitData.color);
+                    auto lightFactor = DirectX::XMVectorGetX(DirectX::XMVector3Dot(hitData.normal, DirectX::XMVector3Normalize(DirectX::XMVectorScale(lightDir, -1.0f))));
+                    const uint32_t cr = (uint32_t)(255.0f * c.x * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
+                    const uint32_t cg = (uint32_t)(255.0f * c.y * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
+                    const uint32_t cb = (uint32_t)(255.0f * c.z * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
+                    framebuffer[(size_t)y * w + x] = (cr << 16) | (cg << 8) | cb;
                 }else{
                     framebuffer[(size_t)y * w + x] = (r << 16) | (g << 8) | b;
                 }

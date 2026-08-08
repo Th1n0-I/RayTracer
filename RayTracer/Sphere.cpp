@@ -59,6 +59,9 @@ namespace RayTracer {
 		// store the hit normal using normalize(point - center) 
 		data.normal = XMVectorScale(XMVectorSubtract(data.point, center), 1.0f / sphere.radius);
 
+		// store the color of the sphere in the hitData
+		data.color = XMVectorSet(sphere.material.color.x, sphere.material.color.y, sphere.material.color.z, 0.0f);
+
 		return true;
 	}
 }

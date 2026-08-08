@@ -8,8 +8,43 @@
 #include "Window.h"
 #include "Camera.h"
 #include "Sphere.h"
+#include "Random.h"
 
 using namespace RayTracer;
+
+DirectX::XMVECTOR SkyColor(DirectX::XMVECTOR dir) {
+    const float t = 0.5f * (DirectX::XMVectorGetY(dir) + 1.0f);
+    return DirectX::XMVectorLerp(DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f),
+                                 DirectX::XMVectorSet(0.5f, 0.7f, 1.0f, 0.0f), t);
+}
+
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres,
+    int maxBounces, uint32_t& rng) {
+    DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
+    DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
+
+    for (int bounce = 0; bounce < maxBounces; bounce++) {
+        HitData hit;
+        bool hitAnything = false;
+        for (const auto& s : spheres) {
+            if (RaySphere(ray, s, 0.01f, hit.t, hit)) hitAnything = true;
+        }
+
+        if (!hitAnything) {
+            radiance = DirectX::XMVectorAdd(radiance,
+                DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
+            break;
+        }
+
+        throughput = DirectX::XMVectorMultiply(throughput, hit.color);
+
+        ray.position = hit.point;
+        ray.direction = DirectX::XMVector3Normalize(
+            DirectX::XMVectorAdd(hit.normal, RandomUnitVector(rng)));
+    }
+
+    return radiance;
+}
 
 int main()
 {
@@ -18,10 +53,26 @@ int main()
     Camera camera;
 
     std::vector<uint32_t> framebuffer;
+    std::vector<DirectX::XMFLOAT3> accum;
+    std::vector<Sphere> spheres = { 
+        {{{10.0f, 0.2f, 0.2f}},{0.0f, 0.0f, 0.0f}, 1.0f,},
+        {{{0.9f, 0.9f, 0.9f}},{0.0f, -101.0f, 0.0f}, 100.0f,}, 
+        {{{0.2f, 10.0f, 0.2f}},{3.0f, 0.1f, 0.0f}, 2.0f,},
+    };
+
+    int sampleCount = 0;
+    int frameCount = 0;
+
+    DirectX::XMFLOAT3 prevPos = camera.position;
+    float prevYaw = camera.yaw, prevPitch = camera.pitch;
+    int prevW = 0, prevH = 0;
+  
 
     float dt = 0.0f;
 
     while (window.ProccessMessages()) {
+        frameCount++;
+
         int dx = 0; int dy = 0;
         window.UpdateMouseLock(dx, dy);
         if (dx || dy) camera.Rotate((float)dx, (float)dy);
@@ -33,75 +84,54 @@ int main()
         const int w = window.Width();
         const int h = window.Height();
         if (w <= 0 || h <= 0) continue;
-        framebuffer.resize((size_t)w * h);
 
-        DirectX::XMVECTOR lightDir = { -1.0f, -1.0f, 0.0f };
+        const bool moved =
+            camera.position.x != prevPos.x || camera.position.y != prevPos.y || camera.position.z != prevPos.z ||
+            camera.yaw != prevYaw || camera.pitch != prevPitch || w != prevW || h != prevH;
 
-        std::vector<Sphere> spheres = {};
+        if (moved) {
+            accum.assign((size_t)w * h, DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f });
+            framebuffer.resize((size_t)w * h);
+            sampleCount = 0;
+            prevPos = camera.position;
+            prevYaw = camera.yaw;
+            prevPitch = camera.pitch;
+            prevW = w; prevH = h;
+        }
 
-        Sphere sphere1 = {
-            {{1.0f, 0.0f, 0.0f}},
-            {0.0f, 0.0f, 0.0f},
-            1.0f,
-        };
-
-        Sphere sphere2 = {
-            {{0.0f, 1.0f, 0.0f}},
-            {0.0f, -101.0f, 0.0f},
-            100.0f,
-        };
-
-        spheres = { sphere1, sphere2 };
+        sampleCount++;
 
         for (int y = 0; y < h; y++) {
-            const float t = (h - 1 - y) / (float)h;
             for (int x = 0; x < w; x++) {
-                const float s = x / (float)w;
+                const size_t i = (size_t)y * w + x;
+
+                uint32_t rng = Hash((uint32_t)i ^ Hash((uint32_t)frameCount)) | 1u;
+
+ 
+                const float s = (x + RandFloat(rng)) / (float)w;
+                const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
 
                 Ray ray = camera.GetRay(s, t);
 
-                DirectX::XMFLOAT3 d;
-                DirectX::XMStoreFloat3(&d, ray.direction);
+                DirectX::XMFLOAT3 c;
+                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, 8, rng));
 
-                const uint32_t r = (uint32_t)(255.0f * (0.5f * d.x + 0.5f));
-                const uint32_t g = (uint32_t)(255.0f * (0.5f * d.y + 0.5f));
-                const uint32_t b = (uint32_t)(255.0f * (0.5f * d.z + 0.5f));
+                accum[i].x += c.x;
+                accum[i].y += c.y;
+                accum[i].z += c.z;
 
-                HitData hitData;
-                bool hit = false;
+                const float inv = 1.0f / (float)sampleCount;
+                float rf = sqrt(accum[i].x * inv);
+                float gf = sqrt(accum[i].y * inv);
+                float bf = sqrt(accum[i].z * inv);
 
-                for (auto& sphere : spheres) {
-                    auto hitSphere = RaySphere(ray, sphere, 0.001f, hitData.t, hitData);
-                    hit |= hitSphere;
-                }
+                if (rf > 1.0f) rf = 1.0f;
+                if (gf > 1.0f) gf = 1.0f;
+                if (bf > 1.0f) bf = 1.0f;
 
-                if (hit) {
-
-                    Ray shadowRay = {
-                        hitData.point,
-                        DirectX::XMVector3Normalize(DirectX::XMVectorScale(lightDir, -1.0f)),
-                    };
-
-                    bool hitShadow = false;
-                    HitData shadowHitData;
-
-                    for (auto& sphere : spheres) {
-                        auto hitSphere = RaySphere(shadowRay, sphere, 0.001f, shadowHitData.t, shadowHitData);
-                        hitShadow |= hitSphere;
-                    }
-
-                    DirectX::XMFLOAT3 n;
-                    DirectX::XMFLOAT3 c;
-                    DirectX::XMStoreFloat3(&n, hitData.normal);
-                    DirectX::XMStoreFloat3(&c, hitData.color);
-                    auto lightFactor = DirectX::XMVectorGetX(DirectX::XMVector3Dot(hitData.normal, DirectX::XMVector3Normalize(DirectX::XMVectorScale(lightDir, -1.0f))));
-                    const uint32_t cr = (uint32_t)(255.0f * c.x * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
-                    const uint32_t cg = (uint32_t)(255.0f * c.y * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
-                    const uint32_t cb = (uint32_t)(255.0f * c.z * std::min(std::max(lightFactor, 0.0f), 1.0f) * !hitShadow);
-                    framebuffer[(size_t)y * w + x] = (cr << 16) | (cg << 8) | cb;
-                }else{
-                    framebuffer[(size_t)y * w + x] = (r << 16) | (g << 8) | b;
-                }
+                framebuffer[i] = ((uint32_t)(255.0f * rf) << 16)
+                    | ((uint32_t)(255.0f * gf) << 8)
+                    | ((uint32_t)(255.0f * bf));
             }
         }
         window.Present(framebuffer.data(), w, h);
@@ -110,6 +140,7 @@ int main()
         dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
         printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);
+        
     }
 }
 

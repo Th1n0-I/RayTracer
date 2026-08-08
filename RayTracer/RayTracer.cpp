@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <chrono>
 #include "Window.h"
 #include "Camera.h"
 
@@ -11,6 +12,7 @@ using namespace RayTracer;
 
 int main()
 {
+    auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 800, 600);
     Camera camera;
 
@@ -48,6 +50,11 @@ int main()
             }
         }
         window.Present(framebuffer.data(), w, h);
+
+        auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - lastTime).count();
+        lastTime = now;
+        printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);
     }
 }
 

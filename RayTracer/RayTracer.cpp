@@ -18,10 +18,52 @@ DirectX::XMVECTOR SkyColor(DirectX::XMVECTOR dir) {
                                  DirectX::XMVectorSet(0.5f, 0.7f, 1.0f, 0.0f), t);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres,
+DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
+    const std::vector<Sphere>& spheres, const std::vector<int>& lights, uint32_t& rng) {
+
+    if (lights.empty()) return DirectX::XMVectorZero();
+
+    const int idx = (int)(RandFloat(rng) * lights.size());
+    const Sphere& light = spheres[lights[idx]];
+    const float lightCountScale = (float)lights.size();
+
+    const DirectX::XMVECTOR lightCenter = DirectX::XMLoadFloat3(&light.pos);
+
+    const DirectX::XMVECTOR awayFromUs = DirectX::XMVector3Normalize(DirectX::XMVectorSubtract(lightCenter, point));
+    DirectX::XMVECTOR dir = RandomUnitVector(rng);
+    if (DirectX::XMVectorGetX(DirectX::XMVector3Dot(dir, awayFromUs)) > 0.0f) dir = DirectX::XMVectorNegate(dir);
+
+    const DirectX::XMVECTOR lightPoint = DirectX::XMVectorMultiplyAdd(
+        dir, DirectX::XMVectorReplicate(light.radius), lightCenter);
+
+    DirectX::XMVECTOR toLight = DirectX::XMVectorSubtract(lightPoint, point);
+    const float dist2 = DirectX::XMVectorGetX(DirectX::XMVector3Dot(toLight, toLight));
+    const float dist = sqrt(dist2);
+    toLight = DirectX::XMVectorScale(toLight, 1.0f / dist);
+
+    const float cosSurface = DirectX::XMVectorGetX(DirectX::XMVector3Dot(normal, toLight));
+    const float cosLight = -DirectX::XMVectorGetX(DirectX::XMVector3Dot(dir, toLight));
+
+    if (cosSurface <= 0.0f || cosLight <= 0.0f) return DirectX::XMVectorZero();
+
+    Ray shadow{ point, toLight };
+    HitData block;
+    block.t = dist - 0.001f;
+    for (const auto& s : spheres) {
+        if (RaySphere(shadow, s, 0.001f, block.t, block)) return DirectX::XMVectorZero();
+    }
+
+    const float geom = cosSurface * cosLight * 2.0f * light.radius * light.radius / dist2;
+
+    return DirectX::XMVectorScale(DirectX::XMLoadFloat3(&light.material.emissionColor), geom * lightCountScale);
+}
+
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<int>& lights,
     int maxBounces, uint32_t& rng) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
+
+    bool takeEmission = true;
 
     for (int bounce = 0; bounce < maxBounces; bounce++) {
         HitData hit;
@@ -30,12 +72,24 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres,
             if (RaySphere(ray, s, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
-        if (!hitAnything) break;
-        
+        if (!hitAnything) {
+            //radiance = DirectX::XMVectorAdd(radiance,
+                //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
+            break;
+        }
 
-        radiance = DirectX::XMVectorAdd(radiance,
-            DirectX::XMVectorMultiply(throughput, hit.emission));
+        if (takeEmission) {
+            radiance = DirectX::XMVectorAdd(radiance,
+                DirectX::XMVectorMultiply(throughput, hit.emission));
+        }
 
+        if (hit.specularChance < 1.0f) {
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, lights, rng);
+            direct = DirectX::XMVectorMultiply(direct, hit.color);
+            direct = DirectX::XMVectorScale(direct, 1.0f - hit.specularChance);
+            radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
+        }
+       
         ray.position = hit.point;
 
         const bool doSpecular = RandFloat(rng) < hit.specularChance;
@@ -55,6 +109,8 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres,
                 DirectX::XMVectorScale(hit.color, 1.0f / (1.0f - hit.specularChance)));
             ray.direction = diffuseDir;
         }
+
+        takeEmission = doSpecular;
     }
 
     return radiance;
@@ -69,10 +125,18 @@ int main()
     std::vector<uint32_t> framebuffer;
     std::vector<DirectX::XMFLOAT3> accum;
     std::vector<Sphere> spheres = { 
-        {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 0.0f, 0.0f}, 1.0f,},
+        {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 1.0f, 0.0f}, 1.0f,},
         {{{0.8f, 0.2f, 0.2f}},{0.0f, -101.0f, 0.0f}, 100.0f,},
         {{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.78f, 0.34f}, 1.0f, 0.05f},{2.0f, -0.5f, 0.0f}, 0.5f}
     };
+
+    std::vector<int> lights;
+    for (int i = 0; i < (int)spheres.size(); i++) {
+        const auto& e = spheres[i].material.emissionColor;
+        if (e.x > 0.0f || e.y > 0.0f || e.z > 0.0f) {
+            lights.push_back(i);
+        }
+    }
 
     int sampleCount = 0;
     int frameCount = 0;
@@ -128,7 +192,7 @@ int main()
                 Ray ray = camera.GetRay(s, t);
 
                 DirectX::XMFLOAT3 c;
-                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, 20, rng));
+                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, lights, 20, rng));
 
                 accum[i].x += c.x;
                 accum[i].y += c.y;

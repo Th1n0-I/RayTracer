@@ -50,17 +50,25 @@ namespace RayTracer {
 			if (t < tMin || t > tMax) return false;
 		}
 
-		// store the hit distance
+		// store data
 		data.t = t;
 
-		// store the hit point using O + t * D
 		data.point = XMVectorMultiplyAdd(ray.direction, XMVectorReplicate(t), ray.position);
-
-		// store the hit normal using normalize(point - center) 
+ 
 		data.normal = XMVectorScale(XMVectorSubtract(data.point, center), 1.0f / sphere.radius);
 
-		// store the color of the sphere in the hitData
 		data.color = XMVectorSet(sphere.material.color.x, sphere.material.color.y, sphere.material.color.z, 0.0f);
+
+		data.emission = XMVectorSet(sphere.material.emissionColor.x,
+			sphere.material.emissionColor.y,
+			sphere.material.emissionColor.z, 0.0f);
+
+		data.specularColor = XMVectorSet(sphere.material.specularColor.x,
+			sphere.material.specularColor.y,
+			sphere.material.specularColor.z, 0.0f);
+
+		data.specularChance = sphere.material.specularChance;
+		data.roughness = sphere.material.roughness;
 
 		return true;
 	}

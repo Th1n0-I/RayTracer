@@ -13,5 +13,9 @@ namespace RayTracer {
 		DirectX::XMVECTOR point{};
 		DirectX::XMVECTOR normal{};
 		DirectX::XMVECTOR color{};
+		DirectX::XMVECTOR emission{};
+		DirectX::XMVECTOR specularColor{};
+		float specularChance{};
+		float roughness;
 	};
 }

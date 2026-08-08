@@ -30,17 +30,31 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres,
             if (RaySphere(ray, s, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
-        if (!hitAnything) {
-            radiance = DirectX::XMVectorAdd(radiance,
-                DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
-            break;
-        }
+        if (!hitAnything) break;
+        
 
-        throughput = DirectX::XMVectorMultiply(throughput, hit.color);
+        radiance = DirectX::XMVectorAdd(radiance,
+            DirectX::XMVectorMultiply(throughput, hit.emission));
 
         ray.position = hit.point;
-        ray.direction = DirectX::XMVector3Normalize(
+
+        const bool doSpecular = RandFloat(rng) < hit.specularChance;
+
+        const DirectX::XMVECTOR diffuseDir = DirectX::XMVector3Normalize(
             DirectX::XMVectorAdd(hit.normal, RandomUnitVector(rng)));
+        DirectX::XMVECTOR specularDir = ray.direction = DirectX::XMVector3Reflect(ray.direction, hit.normal);
+        specularDir = DirectX::XMVector3Normalize(DirectX::XMVectorLerp(specularDir, diffuseDir, hit.roughness * hit.roughness));
+
+        if (doSpecular) {
+            throughput = DirectX::XMVectorMultiply(throughput,
+                DirectX::XMVectorScale(hit.specularColor, 1.0f / hit.specularChance));
+            ray.direction = specularDir;
+        }
+        else {
+            throughput = DirectX::XMVectorMultiply(throughput,
+                DirectX::XMVectorScale(hit.color, 1.0f / (1.0f - hit.specularChance)));
+            ray.direction = diffuseDir;
+        }
     }
 
     return radiance;
@@ -55,9 +69,9 @@ int main()
     std::vector<uint32_t> framebuffer;
     std::vector<DirectX::XMFLOAT3> accum;
     std::vector<Sphere> spheres = { 
-        {{{10.0f, 0.2f, 0.2f}},{0.0f, 0.0f, 0.0f}, 1.0f,},
-        {{{0.9f, 0.9f, 0.9f}},{0.0f, -101.0f, 0.0f}, 100.0f,}, 
-        {{{0.2f, 10.0f, 0.2f}},{3.0f, 0.1f, 0.0f}, 2.0f,},
+        {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 0.0f, 0.0f}, 1.0f,},
+        {{{0.8f, 0.2f, 0.2f}},{0.0f, -101.0f, 0.0f}, 100.0f,},
+        {{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.78f, 0.34f}, 1.0f, 0.05f},{2.0f, -0.5f, 0.0f}, 0.5f}
     };
 
     int sampleCount = 0;
@@ -114,7 +128,7 @@ int main()
                 Ray ray = camera.GetRay(s, t);
 
                 DirectX::XMFLOAT3 c;
-                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, 8, rng));
+                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, 20, rng));
 
                 accum[i].x += c.x;
                 accum[i].y += c.y;

@@ -1,12 +1,10 @@
 #pragma once
 #include <DirectXMath.h>
 #include "Input.h"
+#include "Ray.h"
 
 namespace RayTracer {
-	struct Ray {
-		DirectX::XMVECTOR position;
-		DirectX::XMVECTOR direction;
-	};
+	
 
 	class Camera {
 	public:

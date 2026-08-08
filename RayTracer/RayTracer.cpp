@@ -7,6 +7,7 @@
 #include <chrono>
 #include "Window.h"
 #include "Camera.h"
+#include "Sphere.h"
 
 using namespace RayTracer;
 
@@ -18,12 +19,14 @@ int main()
 
     std::vector<uint32_t> framebuffer;
 
+    float dt = 0.0f;
+
     while (window.ProccessMessages()) {
         int dx = 0; int dy = 0;
         window.UpdateMouseLock(dx, dy);
         if (dx || dy) camera.Rotate((float)dx, (float)dy);
 
-        camera.Update(window.GetInput(), 1.0 / 60.0f);
+        camera.Update(window.GetInput(), dt);
         camera.SetAspect(window.Width(), window.Height());
         camera.CalculateViewPlane();
 
@@ -31,6 +34,13 @@ int main()
         const int h = window.Height();
         if (w <= 0 || h <= 0) continue;
         framebuffer.resize((size_t)w * h);
+
+
+
+        Sphere sphere = {
+            {3.0f, 0.0f, 0.0f},
+            1.0f,
+        };
 
         for (int y = 0; y < h; y++) {
             const float t = (h - 1 - y) / (float)h;
@@ -46,13 +56,26 @@ int main()
                 const uint32_t g = (uint32_t)(255.0f * (0.5f * d.y + 0.5f));
                 const uint32_t b = (uint32_t)(255.0f * (0.5f * d.z + 0.5f));
 
-                framebuffer[(size_t)y * w + x] = (r << 16) | (g << 8) | b;
+                HitData hitData;
+
+                auto hitSphere = RaySphere(ray, sphere, 0.001f, 1000.0f, hitData);
+
+                if (hitSphere) {
+                    DirectX::XMFLOAT3 n;
+                    DirectX::XMStoreFloat3(&n, hitData.normal);
+                    const uint32_t nr = (uint32_t)(255.0f * (0.5f * n.x + 0.5f));
+                    const uint32_t ng = (uint32_t)(255.0f * (0.5f * n.y + 0.5f));
+                    const uint32_t nb = (uint32_t)(255.0f * (0.5f * n.z + 0.5f));
+                    framebuffer[(size_t)y * w + x] = (nr << 16) | (ng << 8) | nb;
+                }else{
+                    framebuffer[(size_t)y * w + x] = (r << 16) | (g << 8) | b;
+                }
             }
         }
         window.Present(framebuffer.data(), w, h);
 
         auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - lastTime).count();
+        dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
         printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);
     }

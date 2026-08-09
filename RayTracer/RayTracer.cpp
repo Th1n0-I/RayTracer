@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <chrono>
+#include <thread>
 #include "Window.h"
 #include "Camera.h"
 #include "Sphere.h"
@@ -111,6 +112,17 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
         }
 
         takeEmission = doSpecular;
+
+        if (bounce > 2) {
+            float p = fmaxf(DirectX::XMVectorGetX(throughput),
+                fmaxf(DirectX::XMVectorGetY(throughput),
+                    DirectX::XMVectorGetZ(throughput)));
+            p = fminf(p, 0.95f);
+
+            if (RandFloat(rng) > p) break;
+
+            throughput = DirectX::XMVectorScale(throughput, 1.0f / p);
+        }
     }
 
     return radiance;
@@ -118,6 +130,8 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
 
 int main()
 {
+    
+
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 800, 600);
     Camera camera;
@@ -149,6 +163,7 @@ int main()
     float dt = 0.0f;
 
     while (window.ProccessMessages()) {
+        auto t0 = std::chrono::steady_clock::now();
         frameCount++;
 
         int dx = 0; int dy = 0;
@@ -177,42 +192,66 @@ int main()
             prevW = w; prevH = h;
         }
 
-        sampleCount++;
+        const int samplesPerFrame = moved ? 1 : 32;
 
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                const size_t i = (size_t)y * w + x;
+        const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
+        std::vector<std::thread> workers;
+        workers.reserve(threadCount);
+        sampleCount+= samplesPerFrame;
+        for (unsigned ti = 0; ti < threadCount; ti++) {
+            workers.emplace_back([&, ti] {
+                for (int i = 0; i < samplesPerFrame; i++){
+                    for (int y = (int)ti; y < h; y += (int)threadCount) {
+                        for (int x = 0; x < w; x++) {
+                            const size_t i = (size_t)y * w + x;
 
-                uint32_t rng = Hash((uint32_t)i ^ Hash((uint32_t)frameCount)) | 1u;
+                            uint32_t rng = Hash((uint32_t)i ^ Hash((uint32_t)frameCount)) | 1u;
 
- 
-                const float s = (x + RandFloat(rng)) / (float)w;
-                const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
 
-                Ray ray = camera.GetRay(s, t);
+                            const float s = (x + RandFloat(rng)) / (float)w;
+                            const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
 
-                DirectX::XMFLOAT3 c;
-                DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, lights, 20, rng));
+                            Ray ray = camera.GetRay(s, t);
 
-                accum[i].x += c.x;
-                accum[i].y += c.y;
-                accum[i].z += c.z;
+                            DirectX::XMFLOAT3 c;
+                            DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, lights, 32, rng));
 
-                const float inv = 1.0f / (float)sampleCount;
-                float rf = sqrt(accum[i].x * inv);
-                float gf = sqrt(accum[i].y * inv);
-                float bf = sqrt(accum[i].z * inv);
+                            accum[i].x += c.x;
+                            accum[i].y += c.y;
+                            accum[i].z += c.z;
 
-                if (rf > 1.0f) rf = 1.0f;
-                if (gf > 1.0f) gf = 1.0f;
-                if (bf > 1.0f) bf = 1.0f;
+                            const float inv = 1.0f / (float)sampleCount;
+                            float rf = sqrt(accum[i].x * inv);
+                            float gf = sqrt(accum[i].y * inv);
+                            float bf = sqrt(accum[i].z * inv);
 
-                framebuffer[i] = ((uint32_t)(255.0f * rf) << 16)
-                    | ((uint32_t)(255.0f * gf) << 8)
-                    | ((uint32_t)(255.0f * bf));
-            }
+                            if (rf > 1.0f) rf = 1.0f;
+                            if (gf > 1.0f) gf = 1.0f;
+                            if (bf > 1.0f) bf = 1.0f;
+
+                            framebuffer[i] = ((uint32_t)(255.0f * rf) << 16)
+                                | ((uint32_t)(255.0f * gf) << 8)
+                                | ((uint32_t)(255.0f * bf));
+                        }
+                    }
+                }
+            });
         }
+
+        for (auto& t : workers) {
+            t.join();
+        }
+        auto t1 = std::chrono::steady_clock::now();
         window.Present(framebuffer.data(), w, h);
+        auto t2 = std::chrono::steady_clock::now();
+
+        printf("render %.2f ms | present %.2f ms | spp %d | fps %.2f | sps %.2f\n",
+            std::chrono::duration<float, std::milli>(t1 - t0).count(),
+            std::chrono::duration<float, std::milli>(t2 - t1).count(),
+            sampleCount,
+            1.0f / std::chrono::duration<float>(t2 - t0).count(),
+            1.0f / std::chrono::duration<float>(t2 - t0).count() * samplesPerFrame);
+
 
         auto now = std::chrono::steady_clock::now();
         dt = std::chrono::duration<float>(now - lastTime).count();

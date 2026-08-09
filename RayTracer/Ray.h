@@ -16,6 +16,6 @@ namespace RayTracer {
 		DirectX::XMVECTOR emission{};
 		DirectX::XMVECTOR specularColor{};
 		float specularChance{};
-		float roughness;
+		float roughness = 0.0f;
 	};
 }

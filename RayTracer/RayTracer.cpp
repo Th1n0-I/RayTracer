@@ -10,6 +10,7 @@
 #include "Camera.h"
 #include "Sphere.h"
 #include "Triangle.h"
+#include "Cube.h"
 #include "Random.h"
 
 using namespace RayTracer;
@@ -21,7 +22,8 @@ DirectX::XMVECTOR SkyColor(DirectX::XMVECTOR dir) {
 }
 
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
-    const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<int>& lights, uint32_t& rng) {
+    const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
+    const std::vector<int>& lights, uint32_t& rng) {
 
     if (lights.empty()) return DirectX::XMVectorZero();
 
@@ -59,12 +61,18 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
         if (RayTriangle(shadow, t, 0.001f, block.t, block)) return DirectX::XMVectorZero();
     }
 
+    for (const auto& c : cubes) {
+        for (const auto& t : c.tris) {
+            if (RayTriangle(shadow, t, 0.01f, block.t, block)) return DirectX::XMVectorZero();
+        }
+    }
+
     const float geom = cosSurface * cosLight * 2.0f * light.radius * light.radius / dist2;
 
     return DirectX::XMVectorScale(DirectX::XMLoadFloat3(&light.material.emissionColor), geom * lightCountScale);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<int>& lights,
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, const std::vector<int>& lights,
     int maxBounces, uint32_t& rng) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
@@ -82,19 +90,25 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
             if (RayTriangle(ray, t, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
+        for (const auto& c : cubes) {
+            for (const auto& t : c.tris) {
+                if (RayTriangle(ray, t, 0.01f, hit.t, hit)) hitAnything = true;
+            }
+        }
+
         if (!hitAnything) {
             //radiance = DirectX::XMVectorAdd(radiance,
                 //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
         }
 
-        if (takeEmission) {
+        if (takeEmission || !hit.useNEE) {
             radiance = DirectX::XMVectorAdd(radiance,
                 DirectX::XMVectorMultiply(throughput, hit.emission));
         }
 
         if (hit.specularChance < 1.0f) {
-            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, triangles, lights, rng);
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, triangles, cubes, lights, rng);
             direct = DirectX::XMVectorMultiply(direct, hit.color);
             direct = DirectX::XMVectorScale(direct, 1.0f - hit.specularChance);
             radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
@@ -144,20 +158,56 @@ int main()
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 800, 600);
     Camera camera;
+    camera.position = { 0.0f, 0.0f, -5.0f };
+    Material defaultMatWhite = {
+        {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+    };
+
+    Material defaultMatRed = {
+        {0.9f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+    };
+
+    Material defaultMatGreen = {
+        {0.2f, 0.9f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+    };
+
+    Material defaultLightWhite = {
+        {0.0f, 0.0f, 0.0f}, {3.0f, 3.0f, 3.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+    };
 
     std::vector<uint32_t> framebuffer;
     std::vector<DirectX::XMFLOAT3> accum;
     std::vector<Sphere> spheres = { 
-        {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 1.0f, 0.0f}, 1.0f,},
-        {{{0.8f, 0.2f, 0.2f}},{0.0f, -101.0f, 0.0f}, 100.0f,},
-        //{{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.78f, 0.34f}, 1.0f, 0.05f},{2.0f, -0.5f, 0.0f}, 0.5f}
+        //{{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 1.0f, 0.0f}, 1.0f,},
+    };
+
+    std::vector<DirectX::XMFLOAT3> verts = {
+        {-2.0f, -2.0f, -2.0f}, //0 
+        { 2.0f, -2.0f, -2.0f}, //1 
+        {-2.0f, -2.0f,  2.0f}, //2 
+        { 2.0f, -2.0f,  2.0f}, //3 
+        {-2.0f,  2.0f,  2.0f}, //4
+        {-2.0f,  2.0f, -2.0f}, //5
+        { 2.0f,  2.0f,  2.0f}, //6
+        { 2.0f,  2.0f, -2.0f}, //7
     };
 
     std::vector<Triangle> triangles = {
-        {{2.0f, -2.0f, 0.0f}, {0.0f, -2.0f, 2.0f}, {0.0f, 2.0f, 2.0f},
-        {{0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f}},
-        {{2.0f, -2.0f, 0.0f}, {2.0f, 2.0f, 0.0f}, {0.0f, 2.0f, 2.0f},
-        {{0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f}},
+        {verts[0], verts[1], verts[2], defaultMatWhite},
+        {verts[3], verts[1], verts[2], defaultMatWhite},
+        {verts[0], verts[2], verts[4], defaultMatRed},
+        {verts[0], verts[5], verts[4], defaultMatRed},
+        {verts[2], verts[6], verts[4], defaultMatWhite},
+        {verts[2], verts[6], verts[3], defaultMatWhite},
+        {verts[6], verts[1], verts[3], defaultMatGreen},
+        {verts[6], verts[1], verts[7], defaultMatGreen},
+        {verts[5], verts[6], verts[4], defaultMatWhite},
+        {verts[5], verts[6], verts[7], defaultMatWhite},
+    };
+
+    std::vector<Cube> cubes = {
+        {{0.0f, 2.0f, 0.0f}, {1.0f, 0.2f, 1.0f}, {0.0f, 0.0f, 0.0f}, defaultLightWhite},
+        {{0.0f, -1.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 45.0f, 0.0f}, defaultMatWhite},
     };
 
     std::vector<int> lights;
@@ -208,47 +258,46 @@ int main()
             prevW = w; prevH = h;
         }
 
-        const int samplesPerFrame = moved ? 1 : 32;
+        const int samplesPerFrame = moved ? 1 : 4;
 
         const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
         std::vector<std::thread> workers;
         workers.reserve(threadCount);
-        sampleCount+= samplesPerFrame;
+        sampleCount += samplesPerFrame;
         for (unsigned ti = 0; ti < threadCount; ti++) {
             workers.emplace_back([&, ti] {
-                for (int i = 0; i < samplesPerFrame; i++){
-                    for (int y = (int)ti; y < h; y += (int)threadCount) {
-                        for (int x = 0; x < w; x++) {
-                            const size_t i = (size_t)y * w + x;
+                for (int y = (int)ti; y < h; y += (int)threadCount) {
+                    for (int x = 0; x < w; x++) {
+                        const size_t idx = (size_t)y * w + x;
 
-                            uint32_t rng = Hash((uint32_t)i ^ Hash((uint32_t)frameCount)) | 1u;
+                        uint32_t rng = Hash((uint32_t)idx ^ Hash((uint32_t)frameCount)) | 1u;
 
-
+                        DirectX::XMFLOAT3 sum{ 0.0f, 0.0f, 0.0f };
+                        for(int sp = 0; sp < samplesPerFrame; sp++){
                             const float s = (x + RandFloat(rng)) / (float)w;
                             const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
 
-                            Ray ray = camera.GetRay(s, t);
-
                             DirectX::XMFLOAT3 c;
-                            DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, triangles, lights, 32, rng));
-
-                            accum[i].x += c.x;
-                            accum[i].y += c.y;
-                            accum[i].z += c.z;
-
-                            const float inv = 1.0f / (float)sampleCount;
-                            float rf = sqrt(accum[i].x * inv);
-                            float gf = sqrt(accum[i].y * inv);
-                            float bf = sqrt(accum[i].z * inv);
-
-                            if (rf > 1.0f) rf = 1.0f;
-                            if (gf > 1.0f) gf = 1.0f;
-                            if (bf > 1.0f) bf = 1.0f;
-
-                            framebuffer[i] = ((uint32_t)(255.0f * rf) << 16)
-                                | ((uint32_t)(255.0f * gf) << 8)
-                                | ((uint32_t)(255.0f * bf));
+                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(s,t), spheres, triangles, cubes, lights, 32, rng));
+                            sum.x += c.x; sum.y += c.y; sum.z += c.z;
                         }
+
+                        accum[idx].x += sum.x;
+                        accum[idx].y += sum.y;
+                        accum[idx].z += sum.z;
+
+                        const float inv = 1.0f / (float)sampleCount;
+                        float rf = sqrt(accum[idx].x * inv);
+                        float gf = sqrt(accum[idx].y * inv);
+                        float bf = sqrt(accum[idx].z * inv);
+
+                        if (rf > 1.0f) rf = 1.0f;
+                        if (gf > 1.0f) gf = 1.0f;
+                        if (bf > 1.0f) bf = 1.0f;
+
+                        framebuffer[idx] = ((uint32_t)(255.0f * rf) << 16)
+                            | ((uint32_t)(255.0f * gf) << 8)
+                            | ((uint32_t)(255.0f * bf));
                     }
                 }
             });

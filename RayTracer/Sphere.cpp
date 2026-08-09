@@ -69,6 +69,7 @@ namespace RayTracer {
 
 		data.specularChance = sphere.material.specularChance;
 		data.roughness = sphere.material.roughness;
+		data.useNEE = true;
 
 		return true;
 	}

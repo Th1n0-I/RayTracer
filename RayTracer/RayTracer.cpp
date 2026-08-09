@@ -9,6 +9,7 @@
 #include "Window.h"
 #include "Camera.h"
 #include "Sphere.h"
+#include "Triangle.h"
 #include "Random.h"
 
 using namespace RayTracer;
@@ -20,7 +21,7 @@ DirectX::XMVECTOR SkyColor(DirectX::XMVECTOR dir) {
 }
 
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
-    const std::vector<Sphere>& spheres, const std::vector<int>& lights, uint32_t& rng) {
+    const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<int>& lights, uint32_t& rng) {
 
     if (lights.empty()) return DirectX::XMVectorZero();
 
@@ -54,12 +55,16 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
         if (RaySphere(shadow, s, 0.001f, block.t, block)) return DirectX::XMVectorZero();
     }
 
+    for (const auto& t : triangles) {
+        if (RayTriangle(shadow, t, 0.001f, block.t, block)) return DirectX::XMVectorZero();
+    }
+
     const float geom = cosSurface * cosLight * 2.0f * light.radius * light.radius / dist2;
 
     return DirectX::XMVectorScale(DirectX::XMLoadFloat3(&light.material.emissionColor), geom * lightCountScale);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<int>& lights,
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<int>& lights,
     int maxBounces, uint32_t& rng) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
@@ -71,6 +76,10 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
         bool hitAnything = false;
         for (const auto& s : spheres) {
             if (RaySphere(ray, s, 0.01f, hit.t, hit)) hitAnything = true;
+        }
+
+        for (const auto& t : triangles) {
+            if (RayTriangle(ray, t, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
         if (!hitAnything) {
@@ -85,7 +94,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
         }
 
         if (hit.specularChance < 1.0f) {
-            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, lights, rng);
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, triangles, lights, rng);
             direct = DirectX::XMVectorMultiply(direct, hit.color);
             direct = DirectX::XMVectorScale(direct, 1.0f - hit.specularChance);
             radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
@@ -141,7 +150,14 @@ int main()
     std::vector<Sphere> spheres = { 
         {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 1.0f, 0.0f}, 1.0f,},
         {{{0.8f, 0.2f, 0.2f}},{0.0f, -101.0f, 0.0f}, 100.0f,},
-        {{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.78f, 0.34f}, 1.0f, 0.05f},{2.0f, -0.5f, 0.0f}, 0.5f}
+        //{{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.78f, 0.34f}, 1.0f, 0.05f},{2.0f, -0.5f, 0.0f}, 0.5f}
+    };
+
+    std::vector<Triangle> triangles = {
+        {{2.0f, -2.0f, 0.0f}, {0.0f, -2.0f, 2.0f}, {0.0f, 2.0f, 2.0f},
+        {{0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f}},
+        {{2.0f, -2.0f, 0.0f}, {2.0f, 2.0f, 0.0f}, {0.0f, 2.0f, 2.0f},
+        {{0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f}},
     };
 
     std::vector<int> lights;
@@ -214,7 +230,7 @@ int main()
                             Ray ray = camera.GetRay(s, t);
 
                             DirectX::XMFLOAT3 c;
-                            DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, lights, 32, rng));
+                            DirectX::XMStoreFloat3(&c, TracePath(ray, spheres, triangles, lights, 32, rng));
 
                             accum[i].x += c.x;
                             accum[i].y += c.y;

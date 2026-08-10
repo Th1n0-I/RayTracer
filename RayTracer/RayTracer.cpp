@@ -205,21 +205,22 @@ int main()
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 600, 600);
     Camera camera;
-    camera.position = { 0.0f, 0.0f, -5.0f };
+    camera.position = { 278.0f, 273.0f, -800.0f };
+    camera.moveSpeed = 300.0f;
     Material defaultMatWhite = {
-        {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+        {0.73f, 0.73f, 0.73f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
 
     Material defaultMatRed = {
-        {0.9f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+        {0.63f, 0.065f, 0.05f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
 
     Material defaultMatGreen = {
-        {0.2f, 0.9f, 0.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+        {0.14f, 0.45f, 0.091f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
 
     Material defaultLightWhite = {
-        {0.0f, 0.0f, 0.0f}, {6.0f, 6.0f, 6.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+        {0.0f, 0.0f, 0.0f}, {18.4f, 15.6f, 8.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
 
     std::vector<uint32_t> framebuffer;
@@ -229,38 +230,56 @@ int main()
     };
 
     std::vector<DirectX::XMFLOAT3> verts = {
-        {-2.0f, -2.0f, -2.0f}, //0 
-        { 2.0f, -2.0f, -2.0f}, //1 
-        {-2.0f, -2.0f,  2.0f}, //2 
-        { 2.0f, -2.0f,  2.0f}, //3 
-        {-2.0f,  2.0f,  2.0f}, //4
-        {-2.0f,  2.0f, -2.0f}, //5
-        { 2.0f,  2.0f,  2.0f}, //6
-        { 2.0f,  2.0f, -2.0f}, //7
-
-        {-0.5f, 1.98f, -0.5f}, // light 0 - 8
-        {0.5f, 1.98f, -0.5f}, // light 1 - 9
-        {0.5f, 1.98f, 0.5f}, // light 2 - 10
-        {- 0.5f, 1.98f, 0.5f}, // light 3 - 11 
+        {  0.0f,   0.0f,   0.0f}, // Left - Bottom - Forward - 0
+        {  0.0f,   0.0f, 559.2f}, // Left - Bottom - Back - 1
+        {  0.0f, 548.8f, 559.2f}, // Left - Top - Back - 2
+        {  0.0f, 548.8f,   0.0f}, // Left - Top - Forward - 3
+        {556.0f,   0.0f,   0.0f}, // Right - Bottom - Forward - 4
+        {556.0f,   0.0f, 559.2f}, // Right - Bottom - Back - 5
+        {556.0f, 548.8f, 559.2f}, // Right - Top - Back - 6
+        {556.0f, 548.8f,   0.0f}, // Right - Top - Forward - 7
+        // Light
+        {213.0f, 548.8f, 227.0f}, // Left - Forward - 8
+        {213.0f, 548.8f, 332.0f}, // Left - Back - 9
+        {343.0f, 548.8f, 332.0f}, // Right - Back - 10
+        {343.0f, 548.8f, 227.0f}, // Right - Forward - 11
+        // Ceiling seams
+        {213.0f, 548.8f,   0.0f}, // Left - Forward - 12
+        {  0.0f, 548.8f, 332.0f}, // Left - Back - 13
+        {343.0f, 548.8f, 559.2f}, // Right - Back - 14
+        {556.0f, 548.8f, 227.0f}, // Right - Forward - 15
     };
 
     std::vector<Triangle> triangles = {
-        {verts[0], verts[1], verts[2], defaultMatWhite},
-        {verts[3], verts[1], verts[2], defaultMatWhite},
-        {verts[0], verts[2], verts[4], defaultMatRed},
-        {verts[0], verts[5], verts[4], defaultMatRed},
-        {verts[2], verts[6], verts[4], defaultMatWhite},
-        {verts[2], verts[6], verts[3], defaultMatWhite},
-        {verts[6], verts[1], verts[3], defaultMatGreen},
-        {verts[6], verts[1], verts[7], defaultMatGreen},
-        {verts[5], verts[6], verts[4], defaultMatWhite},
-        {verts[5], verts[6], verts[7], defaultMatWhite},
-        {verts[8], verts[9], verts[10], defaultLightWhite},
-        {verts[8], verts[10], verts[11], defaultLightWhite},
+        // Floor
+        {verts[0], verts[1], verts[5], defaultMatWhite},
+        {verts[0], verts[5], verts[4], defaultMatWhite},
+        // Ceiling
+        {verts[3], verts[12], verts[9], defaultMatWhite},
+        {verts[3], verts[9], verts[13], defaultMatWhite},
+        {verts[13], verts[10], verts[14], defaultMatWhite},
+        {verts[13], verts[14], verts[2], defaultMatWhite},
+        {verts[11], verts[15], verts[6], defaultMatWhite},
+        {verts[11], verts[6], verts[14], defaultMatWhite},
+        {verts[12], verts[7], verts[15], defaultMatWhite},
+        {verts[12], verts[15], verts[8], defaultMatWhite},
+        // Left wall - Red
+        {verts[0], verts[1], verts[2], defaultMatRed},
+        {verts[0], verts[2], verts[3], defaultMatRed},
+        // Right wall - Green
+        {verts[4], verts[5], verts[6], defaultMatGreen},
+        {verts[4], verts[6], verts[7], defaultMatGreen},
+        // Back wall - white
+        {verts[1], verts[2], verts[6], defaultMatWhite},
+        {verts[1], verts[6], verts[5], defaultMatWhite},
+        // Light
+        {verts[8], verts[11], verts[10], defaultLightWhite},
+        {verts[8], verts[10], verts[9], defaultLightWhite},
     };
 
     std::vector<Cube> cubes = {
-        {{0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 45.0f, 0.0f}, defaultMatWhite, triangles},
+        {{370.5f, 82.5f, 169.0f}, {83.0f*2, 82.5f*2, 83.0f*2}, {0.0f, 16.6f, 0.0f}, defaultMatWhite, triangles},
+        {{187.5f, 165.0f, 351.25f}, {83.0f*2, 165.0f*2, 83.0f*2}, {0.0f, -17.6f, 0.0f}, defaultMatWhite, triangles},
     };
 
     std::vector<LightRef> lights;

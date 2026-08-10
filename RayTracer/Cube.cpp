@@ -6,7 +6,7 @@
 using namespace DirectX;
 
 namespace RayTracer {
-	Cube::Cube(XMFLOAT3 pos, XMFLOAT3 scale, XMFLOAT3 rotation, Material mat) {
+	Cube::Cube(XMFLOAT3 pos, XMFLOAT3 scale, XMFLOAT3 rotation, Material mat, std::vector<Triangle>& tris) {
 		std::vector<XMFLOAT3> verts = {
 			{-1,-1,-1},
 			{-1,-1, 1},
@@ -27,7 +27,7 @@ namespace RayTracer {
 			XMStoreFloat3(&v, XMVectorAdd(XMVectorSet(v.x, v.y, v.z, 0.0f), XMVectorSet(pos.x, pos.y, pos.z, 0.0f)));
 		}
 
-		std::vector<int> indices = {
+		std::vector<int> indx = {
 			0, 1, 2,	1, 6, 2,
 			3, 0, 2,	3, 4, 2,
 			3, 4, 5,	7, 4, 5,
@@ -36,11 +36,16 @@ namespace RayTracer {
 			1, 0, 3,	1, 5, 3,
 		};
 
-		for (int i = 0; i < indices.size(); i += 3) {
+		for (int i = 0; i < indx.size(); i+=3) {
+			int index = tris.size() + i / 3;
+			indices.push_back(index);
+		}
+
+		for (int i = 0; i < indx.size(); i += 3) {
 			tris.push_back({
-				verts[indices[i]], verts[indices[i + 1]], verts[indices[i + 2]],
+				verts[indx[i]], verts[indx[i + 1]], verts[indx[i + 2]],
 				mat
-				});
+			});
 		};
 	}
 }

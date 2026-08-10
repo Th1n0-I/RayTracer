@@ -15,41 +15,98 @@
 
 using namespace RayTracer;
 
+const static float PI = 3.14159f;
+
+struct LightRef {
+    bool isTriangle;
+    int index;
+};
+
+struct LightSample {
+    DirectX::XMVECTOR point;
+    DirectX::XMVECTOR normal;
+    DirectX::XMVECTOR emission;
+    float invPdf;
+};
+
 DirectX::XMVECTOR SkyColor(DirectX::XMVECTOR dir) {
     const float t = 0.5f * (DirectX::XMVectorGetY(dir) + 1.0f);
     return DirectX::XMVectorLerp(DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f),
                                  DirectX::XMVectorSet(0.5f, 0.7f, 1.0f, 0.0f), t);
 }
 
+LightSample SampleSphereLight(const Sphere& sphere, DirectX::XMVECTOR from, uint32_t& rng) {
+    const DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&sphere.pos);
+    const DirectX::XMVECTOR towardLight = DirectX::XMVector3Normalize(
+        DirectX::XMVectorSubtract(center, from));
+    DirectX::XMVECTOR dir = RandomUnitVector(rng);
+    if (DirectX::XMVectorGetX(DirectX::XMVector3Dot(dir, towardLight)) > 0.0f) dir = DirectX::XMVectorNegate(dir);
+
+    LightSample ls{};
+    ls.point = DirectX::XMVectorMultiplyAdd(dir, DirectX::XMVectorReplicate(sphere.radius), center);
+    ls.normal = dir;
+   
+    ls.emission = DirectX::XMLoadFloat3(&sphere.material.emissionColor);
+    ls.invPdf = 2.0f * sphere.radius * sphere.radius * PI;
+    return ls;
+}
+
+LightSample SampleTriangleLight(const Triangle& tri, DirectX::XMVECTOR from, uint32_t& rng) {
+    LightSample ls{};
+    const DirectX::XMVECTOR v0 = DirectX::XMLoadFloat3(&tri.v0);
+    const DirectX::XMVECTOR e1 = DirectX::XMVectorSubtract(DirectX::XMLoadFloat3(&tri.v1), v0);
+    const DirectX::XMVECTOR e2 = DirectX::XMVectorSubtract(DirectX::XMLoadFloat3(&tri.v2), v0);
+
+    float u = RandFloat(rng);
+    float v = RandFloat(rng);
+
+    if (u + v > 1.0f) { u = 1.0f - u; v = 1.0 - v; }
+
+    ls.point = DirectX::XMVectorAdd(v0,
+        DirectX::XMVectorAdd(DirectX::XMVectorScale(e1, u), DirectX::XMVectorScale(e2, v)));
+
+    const DirectX::XMVECTOR cross = DirectX::XMVector3Cross(e1, e2);
+    ls.normal = DirectX::XMVector3Normalize(cross);
+    const float area = 0.5f * DirectX::XMVectorGetX(DirectX::XMVector3Length(cross));
+
+    ls.invPdf = area;
+    ls.emission = DirectX::XMLoadFloat3(&tri.material.emissionColor);
+    return ls;
+}
+
+
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
     const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
-    const std::vector<int>& lights, uint32_t& rng) {
+    const std::vector<LightRef>& lights, uint32_t& rng) {
 
     if (lights.empty()) return DirectX::XMVectorZero();
 
+    // Choses a random light
     const int idx = (int)(RandFloat(rng) * lights.size());
-    const Sphere& light = spheres[lights[idx]];
+    const bool isTriangle = lights[idx].isTriangle;
+    LightSample light{};
+    if (isTriangle) {
+        light = SampleTriangleLight(triangles[lights[idx].index], point, rng);
+    }else
+    {
+        light = SampleSphereLight( spheres[lights[idx].index], point, rng);
+    }
+
+    // Gets the amount of lights and multiplies value by that amount, will average out.
     const float lightCountScale = (float)lights.size();
 
-    const DirectX::XMVECTOR lightCenter = DirectX::XMLoadFloat3(&light.pos);
-
-    const DirectX::XMVECTOR awayFromUs = DirectX::XMVector3Normalize(DirectX::XMVectorSubtract(lightCenter, point));
-    DirectX::XMVECTOR dir = RandomUnitVector(rng);
-    if (DirectX::XMVectorGetX(DirectX::XMVector3Dot(dir, awayFromUs)) > 0.0f) dir = DirectX::XMVectorNegate(dir);
-
-    const DirectX::XMVECTOR lightPoint = DirectX::XMVectorMultiplyAdd(
-        dir, DirectX::XMVectorReplicate(light.radius), lightCenter);
-
-    DirectX::XMVECTOR toLight = DirectX::XMVectorSubtract(lightPoint, point);
+    // The direction from the sample point to the light
+    DirectX::XMVECTOR toLight = DirectX::XMVectorSubtract(light.point, point);
     const float dist2 = DirectX::XMVectorGetX(DirectX::XMVector3Dot(toLight, toLight));
     const float dist = sqrt(dist2);
     toLight = DirectX::XMVectorScale(toLight, 1.0f / dist);
 
+    // How lined up the ray is with the surfaces
     const float cosSurface = DirectX::XMVectorGetX(DirectX::XMVector3Dot(normal, toLight));
-    const float cosLight = -DirectX::XMVectorGetX(DirectX::XMVector3Dot(dir, toLight));
-
+    const float cosLight = -DirectX::XMVectorGetX(DirectX::XMVector3Dot(light.normal, toLight));
     if (cosSurface <= 0.0f || cosLight <= 0.0f) return DirectX::XMVectorZero();
 
+    // Check if the light is blocked
     Ray shadow{ point, toLight };
     HitData block;
     block.t = dist - 0.001f;
@@ -61,18 +118,14 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
         if (RayTriangle(shadow, t, 0.001f, block.t, block)) return DirectX::XMVectorZero();
     }
 
-    for (const auto& c : cubes) {
-        for (const auto& t : c.tris) {
-            if (RayTriangle(shadow, t, 0.01f, block.t, block)) return DirectX::XMVectorZero();
-        }
-    }
+    
+    // Add a bunch of terms to see how much light to add
+    const float geom = cosSurface * cosLight * light.invPdf / (dist2 * PI);
 
-    const float geom = cosSurface * cosLight * 2.0f * light.radius * light.radius / dist2;
-
-    return DirectX::XMVectorScale(DirectX::XMLoadFloat3(&light.material.emissionColor), geom * lightCountScale);
+    return DirectX::XMVectorScale(light.emission, geom * lightCountScale);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, const std::vector<int>& lights,
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, const std::vector<LightRef>& lights,
     int maxBounces, uint32_t& rng) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
@@ -90,19 +143,13 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
             if (RayTriangle(ray, t, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
-        for (const auto& c : cubes) {
-            for (const auto& t : c.tris) {
-                if (RayTriangle(ray, t, 0.01f, hit.t, hit)) hitAnything = true;
-            }
-        }
-
         if (!hitAnything) {
             //radiance = DirectX::XMVectorAdd(radiance,
                 //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
         }
 
-        if (takeEmission || !hit.useNEE) {
+        if (takeEmission) {
             radiance = DirectX::XMVectorAdd(radiance,
                 DirectX::XMVectorMultiply(throughput, hit.emission));
         }
@@ -156,7 +203,7 @@ int main()
     
 
     auto lastTime = std::chrono::steady_clock::now();
-    Window window(L"Sigma", 800, 600);
+    Window window(L"Sigma", 600, 600);
     Camera camera;
     camera.position = { 0.0f, 0.0f, -5.0f };
     Material defaultMatWhite = {
@@ -172,7 +219,7 @@ int main()
     };
 
     Material defaultLightWhite = {
-        {0.0f, 0.0f, 0.0f}, {3.0f, 3.0f, 3.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
+        {0.0f, 0.0f, 0.0f}, {6.0f, 6.0f, 6.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
 
     std::vector<uint32_t> framebuffer;
@@ -190,6 +237,11 @@ int main()
         {-2.0f,  2.0f, -2.0f}, //5
         { 2.0f,  2.0f,  2.0f}, //6
         { 2.0f,  2.0f, -2.0f}, //7
+
+        {-0.5f, 1.98f, -0.5f}, // light 0 - 8
+        {0.5f, 1.98f, -0.5f}, // light 1 - 9
+        {0.5f, 1.98f, 0.5f}, // light 2 - 10
+        {- 0.5f, 1.98f, 0.5f}, // light 3 - 11 
     };
 
     std::vector<Triangle> triangles = {
@@ -203,18 +255,25 @@ int main()
         {verts[6], verts[1], verts[7], defaultMatGreen},
         {verts[5], verts[6], verts[4], defaultMatWhite},
         {verts[5], verts[6], verts[7], defaultMatWhite},
+        {verts[8], verts[9], verts[10], defaultLightWhite},
+        {verts[8], verts[10], verts[11], defaultLightWhite},
     };
 
     std::vector<Cube> cubes = {
-        {{0.0f, 2.0f, 0.0f}, {1.0f, 0.2f, 1.0f}, {0.0f, 0.0f, 0.0f}, defaultLightWhite},
-        {{0.0f, -1.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 45.0f, 0.0f}, defaultMatWhite},
+        {{0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 45.0f, 0.0f}, defaultMatWhite, triangles},
     };
 
-    std::vector<int> lights;
+    std::vector<LightRef> lights;
     for (int i = 0; i < (int)spheres.size(); i++) {
         const auto& e = spheres[i].material.emissionColor;
         if (e.x > 0.0f || e.y > 0.0f || e.z > 0.0f) {
-            lights.push_back(i);
+            lights.push_back({false, i});
+        }
+    }
+    for (int i = 0; i < (int)triangles.size(); i++) {
+        const auto& e = triangles[i].material.emissionColor;
+        if (e.x > 0.0f || e.y > 0.0f || e.z > 0.0f) {
+            lights.push_back({ true, i });
         }
     }
 

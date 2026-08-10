@@ -284,8 +284,8 @@ int main()
         {verts[4], verts[5], verts[6], 1},
         {verts[4], verts[6], verts[7], 1},
         // Back wall - white
-        {verts[1], verts[2], verts[6], 0},
-        {verts[1], verts[6], verts[5], 0},
+        {verts[1], verts[2], verts[6], 4},
+        {verts[1], verts[6], verts[5], 4},
         // Light
         {verts[8], verts[11], verts[10], 3},
         {verts[8], verts[10], verts[9], 3},

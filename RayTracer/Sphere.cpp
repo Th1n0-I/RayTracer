@@ -57,19 +57,7 @@ namespace RayTracer {
  
 		data.normal = XMVectorScale(XMVectorSubtract(data.point, center), 1.0f / sphere.radius);
 
-		data.color = XMVectorSet(sphere.material.color.x, sphere.material.color.y, sphere.material.color.z, 0.0f);
-
-		data.emission = XMVectorSet(sphere.material.emissionColor.x,
-			sphere.material.emissionColor.y,
-			sphere.material.emissionColor.z, 0.0f);
-
-		data.specularColor = XMVectorSet(sphere.material.specularColor.x,
-			sphere.material.specularColor.y,
-			sphere.material.specularColor.z, 0.0f);
-
-		data.specularChance = sphere.material.specularChance;
-		data.roughness = sphere.material.roughness;
-		data.useNEE = true;
+		data.material = sphere.material;
 
 		return true;
 	}

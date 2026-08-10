@@ -1,9 +1,11 @@
 #include "Triangle.h"
 
+#include <vector>
+
 using namespace DirectX;
 
 namespace RayTracer {
-	bool RayTriangle(const Ray& ray, const Triangle& triangle, float tMin, float tMax, HitData& data) {
+	bool RayTriangle(const Ray& ray, const Triangle& triangle, float tMin, float tMax, HitData& data, std::vector<Material>& materials) {
 		const XMVECTOR v0 = XMLoadFloat3(&triangle.v0);
 		const XMVECTOR e1 = XMVectorSubtract(XMLoadFloat3(&triangle.v1), v0);
 		const XMVECTOR e2 = XMVectorSubtract(XMLoadFloat3(&triangle.v2), v0);
@@ -34,18 +36,7 @@ namespace RayTracer {
 		if (XMVectorGetX(XMVector3Dot(n, ray.direction)) > 0.0f) n = XMVectorNegate(n);
 		data.normal = n;
 
-		data.color = XMVectorSet(triangle.material.color.x, triangle.material.color.y, triangle.material.color.z, 0.0f);
-
-		data.emission = XMVectorSet(triangle.material.emissionColor.x,
-			triangle.material.emissionColor.y,
-			triangle.material.emissionColor.z, 0.0f);
-
-		data.specularColor = XMVectorSet(triangle.material.specularColor.x,
-			triangle.material.specularColor.y,
-			triangle.material.specularColor.z, 0.0f);
-
-		data.specularChance = triangle.material.specularChance;
-		data.roughness = triangle.material.roughness;
+		data.material = triangle.material;
 
 		return true;
 	}

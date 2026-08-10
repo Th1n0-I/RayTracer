@@ -6,7 +6,7 @@
 using namespace DirectX;
 
 namespace RayTracer {
-	Cube::Cube(XMFLOAT3 pos, XMFLOAT3 scale, XMFLOAT3 rotation, Material mat, std::vector<Triangle>& tris) {
+	Cube::Cube(XMFLOAT3 pos, XMFLOAT3 scale, XMFLOAT3 rotation, int mat, std::vector<Triangle>& tris) {
 		std::vector<XMFLOAT3> verts = {
 			{-1,-1,-1},
 			{-1,-1, 1},

@@ -6,7 +6,7 @@
 
 namespace RayTracer {
 	struct Sphere {
-		Material material{};
+		int material;
 		DirectX::XMFLOAT3 pos = { 0.0f, 0.0f, 0.0f };
 		float radius = 1.0f;
 	};

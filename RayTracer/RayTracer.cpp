@@ -78,7 +78,7 @@ LightSample SampleTriangleLight(const Triangle& tri, DirectX::XMVECTOR from, uin
 
 
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
-    const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
+    const std::vector<Sphere>& spheres, BoundingVolume& bvh , const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
     const std::vector<LightRef>& lights, std::vector<Material>& materials ,uint32_t& rng) {
 
     if (lights.empty()) return DirectX::XMVectorZero();
@@ -116,9 +116,8 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
         if (RaySphere(shadow, s, 0.001f, block.t, block)) return DirectX::XMVectorZero();
     }
 
-    for (const auto& t : triangles) {
-        if (RayTriangle(shadow, t, 0.001f, block.t, block, materials)) return DirectX::XMVectorZero();
-    }
+    DirectX::XMFLOAT3 divDir; DirectX::XMStoreFloat3(&divDir, DirectX::XMVectorDivide(DirectX::XMVectorReplicate( 1.0f), shadow.direction));
+    if (bvh.RayBoundVolumeIntersect(shadow, triangles, block, materials, divDir)) return DirectX::XMVectorZero();
 
     
     // Add a bunch of terms to see how much light to add
@@ -127,7 +126,7 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
     return DirectX::XMVectorScale(light.emission, geom * lightCountScale);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, std::vector<Material> materials, const std::vector<LightRef>& lights,
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, BoundingVolume& bvh ,const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, std::vector<Material>& materials, const std::vector<LightRef>& lights,
     int maxBounces, uint32_t& rng) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
@@ -141,9 +140,8 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
             if (RaySphere(ray, s, 0.01f, hit.t, hit)) hitAnything = true;
         }
 
-        for (const auto& t : triangles) {
-            if (RayTriangle(ray, t, 0.01f, hit.t, hit, materials)) hitAnything = true;
-        }
+        DirectX::XMFLOAT3 divDir; DirectX::XMStoreFloat3(&divDir, DirectX::XMVectorDivide(DirectX::XMVectorReplicate(1.0f), ray.direction));
+        if (bvh.RayBoundVolumeIntersect(ray, triangles, hit, materials, divDir)) hitAnything = true;
 
         if (!hitAnything) {
             //radiance = DirectX::XMVectorAdd(radiance,
@@ -159,7 +157,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, const s
         }
 
         if (material.specularChance < 1.0f) {
-            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, triangles, cubes, lights, materials, rng);
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, bvh, triangles, cubes, lights, materials, rng);
             direct = DirectX::XMVectorMultiply(direct, DirectX::XMLoadFloat3(&material.color));
             direct = DirectX::XMVectorScale(direct, 1.0f - material.specularChance);
             radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
@@ -294,7 +292,7 @@ int main()
     };
 
     std::vector<Mesh> meshes = {
-        {{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 4, triangles, "meshFiles/suzanne.obj"}
+        {{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 0, triangles, "meshFiles/suzanne.obj"}
     };
 
     std::vector<Cube> cubes = {
@@ -327,24 +325,24 @@ int main()
         if (tri.v0.x < minX) minX = tri.v0.x;
         if (tri.v0.y < minY) minY = tri.v0.y;
         if (tri.v0.z < minZ) minZ = tri.v0.z;
-        if (tri.v0.x < maxX) maxX = tri.v0.x;
-        if (tri.v0.y < maxY) maxY = tri.v0.y;
-        if (tri.v0.z < maxZ) maxZ = tri.v0.z;
-        if (tri.v1.x < minX) minX = tri.v0.x;
-        if (tri.v1.y < minY) minY = tri.v0.y;
-        if (tri.v1.z < minZ) minZ = tri.v0.z;
-        if (tri.v1.x < maxX) maxX = tri.v0.x;
-        if (tri.v1.y < maxY) maxY = tri.v0.y;
-        if (tri.v1.z < maxZ) maxZ = tri.v0.z;
-        if (tri.v2.x < minX) minX = tri.v0.x;
-        if (tri.v2.y < minY) minY = tri.v0.y;
-        if (tri.v2.z < minZ) minZ = tri.v0.z;
-        if (tri.v2.x < maxX) maxX = tri.v0.x;
-        if (tri.v2.y < maxY) maxY = tri.v0.y;
-        if (tri.v2.z < maxZ) maxZ = tri.v0.z;
+        if (tri.v0.x > maxX) maxX = tri.v0.x;
+        if (tri.v0.y > maxY) maxY = tri.v0.y;
+        if (tri.v0.z > maxZ) maxZ = tri.v0.z;
+        if (tri.v1.x < minX) minX = tri.v1.x;
+        if (tri.v1.y < minY) minY = tri.v1.y;
+        if (tri.v1.z < minZ) minZ = tri.v1.z;
+        if (tri.v1.x > maxX) maxX = tri.v1.x;
+        if (tri.v1.y > maxY) maxY = tri.v1.y;
+        if (tri.v1.z > maxZ) maxZ = tri.v1.z;
+        if (tri.v2.x < minX) minX = tri.v2.x;
+        if (tri.v2.y < minY) minY = tri.v2.y;
+        if (tri.v2.z < minZ) minZ = tri.v2.z;
+        if (tri.v2.x > maxX) maxX = tri.v2.x;
+        if (tri.v2.y > maxY) maxY = tri.v2.y;
+        if (tri.v2.z > maxZ) maxZ = tri.v2.z;
     }
 
-    BoundingVolume bvh{ triangles, {minX, minY, minZ}, {maxX, maxY, maxZ} };
+    BoundingVolume bvh{ triangles, {minX - 0.001f, minY - 0.001f, minZ - 0.001f}, {maxX + 0.001f, maxY + 0.01f, maxZ + 0.001f} };
 
     int sampleCount = 0;
     int frameCount = 0;
@@ -406,7 +404,7 @@ int main()
                             const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
                             
                             DirectX::XMFLOAT3 c;
-                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(s,t), spheres, triangles, cubes, materials, lights, 32, rng));
+                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(s,t), spheres, bvh, triangles, cubes, materials, lights, 8, rng));
                             sum.x += c.x; sum.y += c.y; sum.z += c.z;
                         }
 

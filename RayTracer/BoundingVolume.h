@@ -9,7 +9,7 @@ namespace RayTracer {
 	class BoundingVolume {
 	public:
 		BoundingVolume(std::vector<Triangle>& tris, DirectX::XMFLOAT3 boundMin, DirectX::XMFLOAT3 boundMax);
-		bool RayBoundVolumeIntersect(const Ray& ray, const std::vector<Triangle>& triangles, HitData& data, std::vector<Material>& materials);
+		bool RayBoundVolumeIntersect(const Ray& ray, const std::vector<Triangle>& triangles, HitData& data, std::vector<Material>& materials, DirectX::XMFLOAT3& divRayDir);
 	private:
 		std::vector<BoundingVolume> m_children;
 		std::vector<int> m_tris;

@@ -13,5 +13,6 @@ namespace RayTracer {
 		DirectX::XMVECTOR point{};
 		DirectX::XMVECTOR normal{};
 		int material;
+		int nodeCount = 0;
 	};
 }

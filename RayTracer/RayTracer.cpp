@@ -13,6 +13,7 @@
 #include "Cube.h"
 #include "Random.h"
 #include "Mesh.h"
+#include "BoundingVolume.h"
 
 using namespace RayTracer;
 
@@ -314,6 +315,36 @@ int main()
             lights.push_back({ true, i });
         }
     }
+
+    float minX =  100000.0f;
+    float minY =  100000.0f;
+    float minZ =  100000.0f;
+    float maxX = -100000.0f;
+    float maxY = -100000.0f;
+    float maxZ = -100000.0f;
+
+    for (const auto& tri : triangles) {
+        if (tri.v0.x < minX) minX = tri.v0.x;
+        if (tri.v0.y < minY) minY = tri.v0.y;
+        if (tri.v0.z < minZ) minZ = tri.v0.z;
+        if (tri.v0.x < maxX) maxX = tri.v0.x;
+        if (tri.v0.y < maxY) maxY = tri.v0.y;
+        if (tri.v0.z < maxZ) maxZ = tri.v0.z;
+        if (tri.v1.x < minX) minX = tri.v0.x;
+        if (tri.v1.y < minY) minY = tri.v0.y;
+        if (tri.v1.z < minZ) minZ = tri.v0.z;
+        if (tri.v1.x < maxX) maxX = tri.v0.x;
+        if (tri.v1.y < maxY) maxY = tri.v0.y;
+        if (tri.v1.z < maxZ) maxZ = tri.v0.z;
+        if (tri.v2.x < minX) minX = tri.v0.x;
+        if (tri.v2.y < minY) minY = tri.v0.y;
+        if (tri.v2.z < minZ) minZ = tri.v0.z;
+        if (tri.v2.x < maxX) maxX = tri.v0.x;
+        if (tri.v2.y < maxY) maxY = tri.v0.y;
+        if (tri.v2.z < maxZ) maxZ = tri.v0.z;
+    }
+
+    BoundingVolume bvh{ triangles, {minX, minY, minZ}, {maxX, maxY, maxZ} };
 
     int sampleCount = 0;
     int frameCount = 0;

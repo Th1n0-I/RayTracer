@@ -12,6 +12,7 @@
 #include "Triangle.h"
 #include "Cube.h"
 #include "Random.h"
+#include "Mesh.h"
 
 using namespace RayTracer;
 
@@ -226,7 +227,7 @@ int main()
     };
 
     Material defaultMirror = {
-        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 1.0f, 0.5f
+        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 1.0f, 0.2f
     };
 
     std::vector<Material> materials = {
@@ -291,9 +292,13 @@ int main()
         {verts[8], verts[10], verts[9], 3},
     };
 
+    std::vector<Mesh> meshes = {
+        {{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 4, triangles, "meshFiles/suzanne.obj"}
+    };
+
     std::vector<Cube> cubes = {
-        {{370.5f, 82.5f, 169.0f}, {83.0f*2, 82.5f*2, 83.0f*2}, {0.0f, 16.6f, 0.0f}, 0, triangles},
-        {{187.5f, 165.0f, 351.25f}, {83.0f*2, 165.0f*2, 83.0f*2}, {0.0f, -17.6f, 0.0f}, 0, triangles},
+        //{{370.5f, 82.5f, 169.0f}, {83.0f*2, 82.5f*2, 83.0f*2}, {0.0f, 16.6f, 0.0f}, 0, triangles},
+        //{{187.5f, 165.0f, 351.25f}, {83.0f*2, 165.0f*2, 83.0f*2}, {0.0f, -17.6f, 0.0f}, 0, triangles},
     };
 
     std::vector<LightRef> lights;

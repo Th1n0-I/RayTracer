@@ -80,7 +80,7 @@ LightSample SampleTriangleLight(const Triangle& tri, DirectX::XMVECTOR from, uin
 
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
     const std::vector<Sphere>& spheres, BoundingVolume& bvh , const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
-    const std::vector<LightRef>& lights, std::vector<Material>& materials ,uint32_t& rng) {
+    const std::vector<LightRef>& lights, std::vector<Material>& materials ,uint32_t& rng, std::vector<BoundingVolume>& nodes) {
 
     if (lights.empty()) return DirectX::XMVectorZero();
 
@@ -118,7 +118,7 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
     }
 
     DirectX::XMFLOAT3 divDir; DirectX::XMStoreFloat3(&divDir, DirectX::XMVectorDivide(DirectX::XMVectorReplicate( 1.0f), shadow.direction));
-    if (bvh.RayBoundVolumeIntersect(shadow, triangles, block, materials, divDir)) return DirectX::XMVectorZero();
+    if (bvh.RayBoundVolumeIntersect(shadow, triangles, block, materials, divDir, nodes)) return DirectX::XMVectorZero();
 
     
     // Add a bunch of terms to see how much light to add
@@ -128,7 +128,7 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
 }
 
 DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, BoundingVolume& bvh ,const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, std::vector<Material>& materials, const std::vector<LightRef>& lights,
-    int maxBounces, uint32_t& rng) {
+    int maxBounces, uint32_t& rng, std::vector<BoundingVolume>& nodes) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
 
@@ -142,7 +142,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         }
 
         DirectX::XMFLOAT3 divDir; DirectX::XMStoreFloat3(&divDir, DirectX::XMVectorDivide(DirectX::XMVectorReplicate(1.0f), ray.direction));
-        if (bvh.RayBoundVolumeIntersect(ray, triangles, hit, materials, divDir)) hitAnything = true;
+        if (bvh.RayBoundVolumeIntersect(ray, triangles, hit, materials, divDir, nodes)) hitAnything = true;
 
         if (!hitAnything) {
             //radiance = DirectX::XMVectorReplicate(hit.nodeCount / 100.0f);
@@ -159,7 +159,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         }
 
         if (material.specularChance < 1.0f) {
-            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, bvh, triangles, cubes, lights, materials, rng);
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, bvh, triangles, cubes, lights, materials, rng, nodes);
             direct = DirectX::XMVectorMultiply(direct, DirectX::XMLoadFloat3(&material.color));
             direct = DirectX::XMVectorScale(direct, 1.0f - material.specularChance);
             radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
@@ -300,13 +300,13 @@ int main()
 
     };
 
-    int subX = 10;
-    int subY = 10;
+    int subX = 4;
+    int subY = 4;
 
     std::vector<Quad> quads{ { verts[0],verts[1],verts[2],verts[3], 2, triangles, subX, subY },
     { verts[4],verts[5],verts[6],verts[7], 1, triangles, subX, subY },
     { verts[1],verts[2],verts[6],verts[5], 0, triangles, subX, subY },
-    { verts[8],verts[11],verts[10],verts[9], 3, triangles, subX, subY },
+    { verts[8],verts[11],verts[10],verts[9], 3, triangles, 1, 1 },
     { verts[3],verts[12],verts[9],verts[13], 0, triangles, subX, subY },
     { verts[13],verts[10],verts[14],verts[2], 0, triangles, subX, subY },
     { verts[11],verts[15],verts[6],verts[14], 0, triangles, subX, subY },
@@ -364,7 +364,13 @@ int main()
         if (tri.v2.z > maxZ) maxZ = tri.v2.z;
     }
 
-    BoundingVolume bvh{ triangles, {minX - 0.001f, minY - 0.001f, minZ - 0.001f}, {maxX + 0.001f, maxY + 0.01f, maxZ + 0.001f} };
+
+    std::vector<BoundingVolume> nodes;
+
+
+
+    nodes.push_back({ triangles, {minX - 0.001f, minY - 0.001f, minZ - 0.001f}, {maxX + 0.001f, maxY + 0.01f, maxZ + 0.001f}, nodes });
+    const int rootNodeIndex = (int)nodes.size() - 1;
 
     int sampleCount = 0;
     int frameCount = 0;
@@ -426,7 +432,7 @@ int main()
                             const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
                             
                             DirectX::XMFLOAT3 c;
-                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(s,t), spheres, bvh, triangles, cubes, materials, lights, 8, rng));
+                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(s,t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 8, rng, nodes));
                             sum.x += c.x; sum.y += c.y; sum.z += c.z;
                         }
 

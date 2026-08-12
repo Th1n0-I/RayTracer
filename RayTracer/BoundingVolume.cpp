@@ -27,8 +27,8 @@ namespace RayTracer {
 	}
 
 
-	BoundingVolume::BoundingVolume(std::vector<Triangle>& tris, DirectX::XMFLOAT3 boundMin, DirectX::XMFLOAT3 boundMax) :
-	m_boundMax(boundMax), m_boundMin(boundMin), m_isLeaf(false){
+	BoundingVolume::BoundingVolume(std::vector<Triangle>& tris, DirectX::XMFLOAT3 boundMin, DirectX::XMFLOAT3 boundMax, std::vector<BoundingVolume>& nodes) :
+	m_boundMax(boundMax), m_boundMin(boundMin), m_isLeaf(false), m_child1(0), m_child2(0){
 		std::vector<int> trianglesInVolume;
 		int count = 0;
 		for (int indx = 0; indx < tris.size(); indx++) {
@@ -84,45 +84,60 @@ namespace RayTracer {
 		else {
 			XMFLOAT3 size{ boundMax.x - boundMin.x, boundMax.y - boundMin.y, boundMax.z - boundMin.z };
 			if (size.x > size.y && size.x > size.z) {
-				m_children.push_back({
+				
+				nodes.push_back( {
 					tris,
 					{boundMin},
-					{boundMin.x + size.x / 2, boundMax.y, boundMax.z}
-					});
-				m_children.push_back({
+					{boundMin.x + size.x / 2, boundMax.y, boundMax.z},
+					nodes});
+				m_child1 = (int)nodes.size() - 1;
+				
+				nodes.push_back({
 					tris,
 					{boundMin.x + size.x / 2, boundMin.y, boundMin.z},
-					{boundMax}
+					{boundMax},
+					nodes
 					});
+				m_child2 = (int)nodes.size() - 1;
 			}
 			else if (size.y > size.x && size.y > size.z) {
-				m_children.push_back({
+				
+				nodes.push_back({
 					tris,
 					{boundMin},
-					{boundMax.x, boundMin.y + size.y / 2, boundMax.z}
+					{boundMax.x, boundMin.y + size.y / 2, boundMax.z},
+					nodes
 					});
-				m_children.push_back({
+				m_child1 = (int)nodes.size() - 1;
+				nodes.push_back({
 					tris,
 					{boundMin.x, boundMin.y + size.y / 2, boundMin.z},
-					{boundMax}
+					{boundMax},
+					nodes
 					});
+				m_child2 = (int)nodes.size() - 1;
 			}
 			else{
-				m_children.push_back({
+				
+				nodes.push_back({
 					tris,
 					{boundMin},
-					{boundMax.x, boundMax.y, boundMin.z + size.z / 2}
+					{boundMax.x, boundMax.y, boundMin.z + size.z / 2},
+					nodes
 					});
-				m_children.push_back({
+				m_child1 = (int)nodes.size() - 1;
+				nodes.push_back({
 					tris,
 					{boundMin.x, boundMin.y, boundMin.z + size.z / 2},
-					{boundMax}
+					{boundMax},
+					nodes
 					});
+				m_child2 = (int)nodes.size() - 1;
 			}
 		}
 	}
 
-	bool BoundingVolume::RayBoundVolumeIntersect(const Ray& ray, const std::vector<Triangle>& triangles, HitData& data, std::vector<Material>& materials, XMFLOAT3& divRayDir) {
+	bool BoundingVolume::RayBoundVolumeIntersect(const Ray& ray, const std::vector<Triangle>& triangles, HitData& data, std::vector<Material>& materials, XMFLOAT3& divRayDir, std::vector<BoundingVolume>& nodes) {
 		bool hitAnything = false;
 
 		data.nodeCount++;
@@ -130,15 +145,15 @@ namespace RayTracer {
 		if (!m_isLeaf) {
 			float child1Dist = 0;
 			float child2Dist = 0;
-			bool child1Enter = AABBIntersect(ray, m_children[0].m_boundMin, m_children[0].m_boundMax, data, divRayDir, child1Dist);
-			bool child2Enter = AABBIntersect(ray, m_children[1].m_boundMin, m_children[1].m_boundMax, data, divRayDir, child2Dist);
+			bool child1Enter = AABBIntersect(ray, nodes[m_child1].m_boundMin, nodes[m_child1].m_boundMax, data, divRayDir, child1Dist);
+			bool child2Enter = AABBIntersect(ray, nodes[m_child2].m_boundMin, nodes[m_child2].m_boundMax, data, divRayDir, child2Dist);
 			if (child1Dist < child2Dist) {
-				if (child1Enter) if (m_children[0].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir)) hitAnything = true;
-				if (child2Enter && child2Dist <= data.t) if (m_children[1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir)) hitAnything = true;
+				if (child1Enter) if (nodes[m_child1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
+				if (child2Enter && child2Dist <= data.t) if (nodes[m_child2].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
 				}
 			else { 
-				if (child2Enter) if (m_children[1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir)) hitAnything = true; 
-				if (child1Enter && child1Dist <= data.t) if (m_children[0].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir)) hitAnything = true;
+				if (child2Enter) if (nodes[m_child2].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
+				if (child1Enter && child1Dist <= data.t) if (nodes[m_child1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
 			}
 			return hitAnything;
 		}

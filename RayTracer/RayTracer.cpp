@@ -14,6 +14,7 @@
 #include "Random.h"
 #include "Mesh.h"
 #include "BoundingVolume.h"
+#include "Quad.h"
 
 using namespace RayTracer;
 
@@ -144,6 +145,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         if (bvh.RayBoundVolumeIntersect(ray, triangles, hit, materials, divDir)) hitAnything = true;
 
         if (!hitAnything) {
+            //radiance = DirectX::XMVectorReplicate(hit.nodeCount / 100.0f);
             //radiance = DirectX::XMVectorAdd(radiance,
                 //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
@@ -195,6 +197,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
 
             throughput = DirectX::XMVectorScale(throughput, 1.0f / p);
         }
+        //radiance = DirectX::XMVectorReplicate(hit.nodeCount / 100.0f);
     }
 
     return radiance;
@@ -262,34 +265,53 @@ int main()
         {  0.0f, 548.8f, 332.0f}, // Left - Back - 13
         {343.0f, 548.8f, 559.2f}, // Right - Back - 14
         {556.0f, 548.8f, 227.0f}, // Right - Forward - 15
+        // Quad test
+        {456.0f,  80.0f, 500.0f},
+        {456.0f, 440.0f, 200.0f},
+        {100.0f, 440.0f, 500.0f},
+        {100.0f,  80.0f, 500.0f},   
     };
 
     std::vector<Triangle> triangles = {
         // Floor
-        {verts[0], verts[1], verts[5], 0},
-        {verts[0], verts[5], verts[4], 0},
+        //{verts[0], verts[1], verts[5], 0},
+        //{verts[0], verts[5], verts[4], 0},
         // Ceiling
-        {verts[3], verts[12], verts[9], 0},
-        {verts[3], verts[9], verts[13], 0},
-        {verts[13], verts[10], verts[14], 0},
-        {verts[13], verts[14], verts[2], 0},
-        {verts[11], verts[15], verts[6], 0},
-        {verts[11], verts[6], verts[14], 0},
-        {verts[12], verts[7], verts[15], 0},
-        {verts[12], verts[15], verts[8], 0},
+        //{verts[3], verts[12], verts[9], 0},
+        //{verts[3], verts[9], verts[13], 0},
+        //{verts[13], verts[10], verts[14], 0},
+        //{verts[13], verts[14], verts[2], 0},
+        //{verts[11], verts[15], verts[6], 0},
+        //{verts[11], verts[6], verts[14], 0},
+        //{verts[12], verts[7], verts[15], 0},
+        //{verts[12], verts[15], verts[8], 0},
         // Left wall - Red
-        {verts[0], verts[1], verts[2], 2},
-        {verts[0], verts[2], verts[3], 2},
+        //{verts[0], verts[1], verts[2], 2},
+        //{verts[0], verts[2], verts[3], 2},
         // Right wall - Green
-        {verts[4], verts[5], verts[6], 1},
-        {verts[4], verts[6], verts[7], 1},
+        //{verts[4], verts[5], verts[6], 1},
+        //{verts[4], verts[6], verts[7], 1},
         // Back wall - white
-        {verts[1], verts[2], verts[6], 0},
-        {verts[1], verts[6], verts[5], 0},
+        //{verts[1], verts[2], verts[6], 0},
+        //{verts[1], verts[6], verts[5], 0},
         // Light
-        {verts[8], verts[11], verts[10], 3},
-        {verts[8], verts[10], verts[9], 3},
+        //{verts[8], verts[11], verts[10], 3},
+        //{verts[8], verts[10], verts[9], 3},
+
     };
+
+    int subX = 10;
+    int subY = 10;
+
+    std::vector<Quad> quads{ { verts[0],verts[1],verts[2],verts[3], 2, triangles, subX, subY },
+    { verts[4],verts[5],verts[6],verts[7], 1, triangles, subX, subY },
+    { verts[1],verts[2],verts[6],verts[5], 0, triangles, subX, subY },
+    { verts[8],verts[11],verts[10],verts[9], 3, triangles, subX, subY },
+    { verts[3],verts[12],verts[9],verts[13], 0, triangles, subX, subY },
+    { verts[13],verts[10],verts[14],verts[2], 0, triangles, subX, subY },
+    { verts[11],verts[15],verts[6],verts[14], 0, triangles, subX, subY },
+    { verts[12],verts[7],verts[15],verts[8], 0, triangles, subX, subY },
+    { verts[0],verts[1],verts[5],verts[4], 0, triangles, subX, subY } };
 
     std::vector<Mesh> meshes = {
         {{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 0, triangles, "meshFiles/suzanne.obj"}
@@ -412,10 +434,24 @@ int main()
                         accum[idx].y += sum.y;
                         accum[idx].z += sum.z;
 
-                        const float inv = 1.0f / (float)sampleCount;
-                        float rf = powf(accum[idx].x * inv, 1.0f / 2.2f);
-                        float gf = powf(accum[idx].y * inv, 1.0f / 2.2f);
-                        float bf = powf(accum[idx].z * inv, 1.0f / 2.2f);
+                        const static bool debug = false;
+
+                        float rf;
+                        float gf;
+                        float bf;
+
+                        if (!debug) 
+                        {
+                            const float inv = 1.0f / (float)sampleCount;
+                            rf = powf(accum[idx].x * inv, 1.0f / 2.2f);
+                            gf = powf(accum[idx].y * inv, 1.0f / 2.2f);
+                            bf = powf(accum[idx].z * inv, 1.0f / 2.2f);
+                        }
+                        else {
+                            rf = sum.x;
+                            gf = sum.y;
+                            bf = sum.z;
+                        }
 
                         if (rf > 1.0f) rf = 1.0f;
                         if (gf > 1.0f) gf = 1.0f;

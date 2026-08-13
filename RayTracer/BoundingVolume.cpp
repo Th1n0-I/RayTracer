@@ -1,7 +1,71 @@
 #include "BoundingVolume.h"
-
+#include <algorithm>
 
 using namespace DirectX;
+using namespace RayTracer;
+
+static constexpr int kBins = 12;
+static constexpr float C_TRAV = 1.0f;
+static constexpr float C_ISECT = 2.0f;
+
+struct Bin { Bounds bounds; int count = 0; };
+
+float FindBestSplit(const std::vector<Triangle>& tris,
+	const std::vector<XMFLOAT3>& centroids,
+	const std::vector<int>& indices,
+	int start, int count,
+	int& bestAxis, int& bestBin) {
+
+	bestAxis = -1;
+	bestBin = -1;
+	float bestCost = FLT_MAX;
+
+	Bounds cb;
+	for (int i = start; i < start + count; i++) 
+		cb.Grow(centroids[indices[i]]);
+	
+	for (int axis = 0; axis < 3; axis++) {
+		float cmin = Axis(cb.min, axis);
+		float cmax = Axis(cb.max, axis);
+		if (cmax - cmin < 1e-8f) continue;
+
+		float scale = kBins / (cmax - cmin);
+
+		Bin bins[kBins];
+		for (int i = start; i < start + count; i++) {
+			int idx = indices[i];
+			int b = (int)((Axis(centroids[idx], axis) - cmin) * scale);
+			if (b >= kBins) b = kBins - 1;
+			bins[b].count++;
+			bins[b].bounds.Grow(tris[idx].v0);
+			bins[b].bounds.Grow(tris[idx].v1);
+			bins[b].bounds.Grow(tris[idx].v2);
+		}
+
+		float rightTerm[kBins - 1];
+		Bounds rb; int rc = 0;
+		for (int i = kBins - 1; i > 0; i--) {
+			rb.Grow(bins[i].bounds);
+			rc += bins[i].count;
+			rightTerm[i - 1] = rc ? rb.Area() * rc : 0.0f;
+		}
+
+		Bounds lb; int lc = 0;
+		for (int i = 0; i < kBins; i++) {
+			lb.Grow(bins[i].bounds);
+			lc += bins[i].count;
+			if (lc == 0 || lc == count) continue;
+			
+			float cost = lb.Area() * lc + rightTerm[i];
+			if (cost < bestCost) {
+				bestCost = cost;
+				bestAxis = axis;
+				bestBin = i + 1;	
+			}
+		}
+	}
+	return bestCost;
+}
 
 namespace RayTracer {
 
@@ -26,140 +90,87 @@ namespace RayTracer {
 		return false;
 	}
 
-
-	BoundingVolume::BoundingVolume(std::vector<Triangle>& tris, DirectX::XMFLOAT3 boundMin, DirectX::XMFLOAT3 boundMax, std::vector<BoundingVolume>& nodes) :
-	m_boundMax(boundMax), m_boundMin(boundMin), m_isLeaf(false), m_child1(0), m_child2(0){
-		std::vector<int> trianglesInVolume;
-		int count = 0;
-		for (int indx = 0; indx < tris.size(); indx++) {
-			XMVECTOR center = XMVectorScale(XMLoadFloat3(&tris[indx].v0) +
-				XMLoadFloat3(&tris[indx].v1) +
-				XMLoadFloat3(&tris[indx].v2), 1.0f / 3.0f);
-			XMFLOAT3 centerFloat3; XMStoreFloat3(&centerFloat3, center);
-
-
-			if (centerFloat3.x >= boundMin.x && centerFloat3.x < boundMax.x &&
-				centerFloat3.y >= boundMin.y && centerFloat3.y < boundMax.y &&
-				centerFloat3.z >= boundMin.z && centerFloat3.z < boundMax.z) {
-				count++;
-				m_tris.push_back(indx);
-			}
+	Bounds ComputeBounds(std::vector<Triangle>& tris, std::vector<int> indices, int start, int count) {
+		Bounds b;
+		for (int i = start; i < start + count; i++) {
+			b.Grow(tris[indices[i]].v0);
+			b.Grow(tris[indices[i]].v1);
+			b.Grow(tris[indices[i]].v2);
 		}
-
-		if (count == 0) { m_isLeaf = true; return; }
-
-		float minX = FLT_MAX;
-		float minY = FLT_MAX;
-		float minZ = FLT_MAX;
-		float maxX = -FLT_MAX;
-		float maxY = -FLT_MAX;
-		float maxZ = -FLT_MAX;
-		for (const auto& indx : m_tris) {
-			const auto& tri = tris[indx];
-			if (tri.v0.x < minX) minX = tri.v0.x;
-			if (tri.v0.y < minY) minY = tri.v0.y;
-			if (tri.v0.z < minZ) minZ = tri.v0.z;
-			if (tri.v0.x > maxX) maxX = tri.v0.x;
-			if (tri.v0.y > maxY) maxY = tri.v0.y;
-			if (tri.v0.z > maxZ) maxZ = tri.v0.z;
-			if (tri.v1.x < minX) minX = tri.v1.x;
-			if (tri.v1.y < minY) minY = tri.v1.y;
-			if (tri.v1.z < minZ) minZ = tri.v1.z;
-			if (tri.v1.x > maxX) maxX = tri.v1.x;
-			if (tri.v1.y > maxY) maxY = tri.v1.y;
-			if (tri.v1.z > maxZ) maxZ = tri.v1.z;
-			if (tri.v2.x < minX) minX = tri.v2.x;
-			if (tri.v2.y < minY) minY = tri.v2.y;
-			if (tri.v2.z < minZ) minZ = tri.v2.z;
-			if (tri.v2.x > maxX) maxX = tri.v2.x;
-			if (tri.v2.y > maxY) maxY = tri.v2.y;
-			if (tri.v2.z > maxZ) maxZ = tri.v2.z;
-		}
-		m_boundMin = { minX - 0.01f, minY - 0.01f, minZ - 0.01f };
-		m_boundMax = { maxX + 0.01f, maxY + 0.01f, maxZ + 0.01f };
-
-		if (count <= 6) {
-			m_isLeaf = true;
-		}
-		else {
-			XMFLOAT3 size{ boundMax.x - boundMin.x, boundMax.y - boundMin.y, boundMax.z - boundMin.z };
-			if (size.x > size.y && size.x > size.z) {
-				
-				nodes.push_back( {
-					tris,
-					{boundMin},
-					{boundMin.x + size.x / 2, boundMax.y, boundMax.z},
-					nodes});
-				m_child1 = (int)nodes.size() - 1;
-				
-				nodes.push_back({
-					tris,
-					{boundMin.x + size.x / 2, boundMin.y, boundMin.z},
-					{boundMax},
-					nodes
-					});
-				m_child2 = (int)nodes.size() - 1;
-			}
-			else if (size.y > size.x && size.y > size.z) {
-				
-				nodes.push_back({
-					tris,
-					{boundMin},
-					{boundMax.x, boundMin.y + size.y / 2, boundMax.z},
-					nodes
-					});
-				m_child1 = (int)nodes.size() - 1;
-				nodes.push_back({
-					tris,
-					{boundMin.x, boundMin.y + size.y / 2, boundMin.z},
-					{boundMax},
-					nodes
-					});
-				m_child2 = (int)nodes.size() - 1;
-			}
-			else{
-				
-				nodes.push_back({
-					tris,
-					{boundMin},
-					{boundMax.x, boundMax.y, boundMin.z + size.z / 2},
-					nodes
-					});
-				m_child1 = (int)nodes.size() - 1;
-				nodes.push_back({
-					tris,
-					{boundMin.x, boundMin.y, boundMin.z + size.z / 2},
-					{boundMax},
-					nodes
-					});
-				m_child2 = (int)nodes.size() - 1;
-			}
-		}
+		return b;
 	}
 
-	bool BoundingVolume::RayBoundVolumeIntersect(const Ray& ray, const std::vector<Triangle>& triangles, HitData& data, std::vector<Material>& materials, XMFLOAT3& divRayDir, std::vector<BoundingVolume>& nodes) {
-		bool hitAnything = false;
+	int Build(std::vector<Triangle>& tris, std::vector<XMFLOAT3>& centroids, std::vector<int>& indices, int start, int count, std::vector<BoundingVolume>& nodes, int self) {
+		
+		nodes[self].bounds = ComputeBounds(tris, indices, start, count);
+
+		int bestAxis, bestBin;
+		float bestCost = FindBestSplit(tris, centroids, indices, start, count, bestAxis, bestBin);
+		float splitCost = C_TRAV + (bestCost / nodes[self].bounds.Area()) * C_ISECT;
+		float leafcost = count * C_ISECT;
+
+		if (bestAxis < 0 || splitCost >= leafcost || count <= 2) {
+			nodes[self].m_index = start;
+			nodes[self].m_count = count;
+			return self;
+		}
+
+		Bounds cb;
+		for (int i = start; i < start + count; i++) cb.Grow(centroids[indices[i]]);
+
+		float cmin = Axis(cb.min, bestAxis);
+		float scale = kBins / (Axis(cb.max, bestAxis) - cmin);
+
+		auto begin = indices.begin() + start;
+		auto mid = std::partition(begin, begin + count, [&](int idx) {
+			int b = (int)((Axis(centroids[idx], bestAxis) - cmin) * scale);
+			if (b >= kBins) b = kBins - 1;
+			return b < bestBin;
+			});
+		int leftCount = (int)(mid - begin);
+
+		int child1 = (int)nodes.size();
+		nodes.emplace_back(); nodes.emplace_back();
+		Build(tris, centroids, indices, start, leftCount, nodes, child1);
+		Build(tris, centroids, indices, start + leftCount, count - leftCount, nodes, child1 + 1);
+		nodes[self].m_index = child1;
+		nodes[self].m_count = 0;
+		return self;
+	}
+
+	bool BoundingVolume::RayBoundVolumeIntersect(const Ray& ray,
+		const std::vector<Triangle>& triangles,
+		const std::vector<int>& indices, 
+		HitData& data, 
+		std::vector<Material>& materials, 
+		XMFLOAT3& divRayDir, 
+		std::vector<BoundingVolume>& nodes) const {
+
+		
 
 		data.nodeCount++;
 		
-		if (!m_isLeaf) {
-			float child1Dist = 0;
-			float child2Dist = 0;
-			bool child1Enter = AABBIntersect(ray, nodes[m_child1].m_boundMin, nodes[m_child1].m_boundMax, data, divRayDir, child1Dist);
-			bool child2Enter = AABBIntersect(ray, nodes[m_child2].m_boundMin, nodes[m_child2].m_boundMax, data, divRayDir, child2Dist);
-			if (child1Dist < child2Dist) {
-				if (child1Enter) if (nodes[m_child1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
-				if (child2Enter && child2Dist <= data.t) if (nodes[m_child2].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
-				}
-			else { 
-				if (child2Enter) if (nodes[m_child2].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
-				if (child1Enter && child1Dist <= data.t) if (nodes[m_child1].RayBoundVolumeIntersect(ray, triangles, data, materials, divRayDir, nodes)) hitAnything = true;
-			}
+		if (m_count > 0) {
+			bool hitAnything = false;
+			for (int i = m_index; i < m_index + m_count; i++)
+				if (RayTriangle(ray, triangles[indices[i]], 0.01f, data.t, data, materials))
+					hitAnything = true;
 			return hitAnything;
 		}
 
-		for (auto& indx : m_tris) {
-			if (RayTriangle(ray, triangles[indx], 0.01f, data.t, data, materials)) hitAnything = true;
+		bool hitAnything = false;
+
+		float child1Dist = 0;
+		float child2Dist = 0;
+		bool child1Enter = AABBIntersect(ray, nodes[m_index].bounds.min, nodes[m_index].bounds.max, data, divRayDir, child1Dist);
+		bool child2Enter = AABBIntersect(ray, nodes[m_index + 1].bounds.min, nodes[m_index + 1].bounds.max, data, divRayDir, child2Dist);
+		if (child1Dist < child2Dist) {
+			if (child1Enter) if (nodes[m_index].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
+			if (child2Enter && child2Dist <= data.t) if (nodes[m_index + 1].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
+			}
+		else { 
+			if (child2Enter) if (nodes[m_index + 1].RayBoundVolumeIntersect(ray, triangles,indices, data, materials, divRayDir, nodes)) hitAnything = true;
+			if (child1Enter && child1Dist <= data.t) if (nodes[m_index].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
 		}
 		return hitAnything;
 	}

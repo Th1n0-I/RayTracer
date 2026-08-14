@@ -144,9 +144,16 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
 
         DirectX::XMFLOAT3 divDir; DirectX::XMStoreFloat3(&divDir, DirectX::XMVectorDivide(DirectX::XMVectorReplicate(1.0f), ray.direction));
         if (bvh.RayBoundVolumeIntersect(ray, triangles, indices, hit, materials, divDir, nodes)) hitAnything = true;
+       
+        /*if (hit.nodeCount <= 1) radiance = {0.0f, 1.0f, 0.0f};
+        else if (hit.nodeCount >= 15) radiance =  { 1.0f, 0.0f, 0.0f };
+        else radiance = DirectX::XMVectorReplicate(hit.nodeCount / 15.0f);
+        break;
+        */ // Debug
+
+        
 
         if (!hitAnything) {
-            radiance = DirectX::XMVectorReplicate(hit.nodeCount / 100.0f);
             //radiance = DirectX::XMVectorAdd(radiance,
                 //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
@@ -198,7 +205,8 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
 
             throughput = DirectX::XMVectorScale(throughput, 1.0f / p);
         }
-        radiance = DirectX::XMVectorReplicate(hit.nodeCount / 100.0f);
+
+        
     }
 
     return radiance;
@@ -356,6 +364,13 @@ int main()
     nodes.reserve(2 * triangles.size());
     const int rootNodeIndex = Build(triangles, centroids, indices, 0, (int)triangles.size(), nodes, 0);
 
+    int leaves = 0, totalTris = 0, maxLeaf = 0;
+    for (const auto& n : nodes)
+        if (n.m_count > 0) { leaves++; totalTris += n.m_count; maxLeaf = std::max(maxLeaf, n.m_count); }
+
+    printf("nodes %zu | leaves %d | avgLeaf %.1f | maxLeaf %d\n",
+        nodes.size(), leaves, (float)totalTris / leaves, maxLeaf);
+
     int sampleCount = 0;
     int frameCount = 0;
 
@@ -417,15 +432,15 @@ int main()
                             
                             DirectX::XMFLOAT3 c;
                             DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(
-                                s,t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 1, rng, nodes, indices));
+                                s,t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 8, rng, nodes, indices));
                             sum.x += c.x; sum.y += c.y; sum.z += c.z;
                         }
 
                         accum[idx].x += sum.x;
                         accum[idx].y += sum.y;
-                        accum[idx].z += sum.z;
+                        accum[idx].z += sum.z;  
 
-                        const static bool debug = true;
+                        const static bool debug = false;
 
                         float rf;
                         float gf;

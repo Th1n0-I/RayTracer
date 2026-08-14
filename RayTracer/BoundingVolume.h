@@ -7,7 +7,7 @@
 
 namespace RayTracer {
 
-	struct Bounds {
+	struct AABB {
 		DirectX::XMFLOAT3 min{  FLT_MAX, FLT_MAX, FLT_MAX };
 		DirectX::XMFLOAT3 max{ -FLT_MAX,-FLT_MAX,-FLT_MAX };
 
@@ -16,7 +16,7 @@ namespace RayTracer {
 			min.y = fminf(min.y, p.y); max.y = fmaxf(max.y, p.y);
 			min.z = fminf(min.z, p.z); max.z = fmaxf(max.z, p.z);
 		}
-		void Grow(const Bounds& b) { Grow(b.min); Grow(b.max); }
+		void Grow(const AABB& b) { if (b.max.x < b.min.x) return; Grow(b.min); Grow(b.max); }
 
 		float Area() const {
 			float w = max.x - min.x, h = max.y - min.y, d = max.z - min.z;
@@ -41,7 +41,7 @@ namespace RayTracer {
 		// When not leaf, child 1 / 2 index. When leaf, triangle vector start / end index
 		int m_index = 0;
 		int m_count = 0;
-		Bounds bounds;
+		AABB bounds;
 	};
 
 	int Build(std::vector<Triangle>& tris, std::vector<DirectX::XMFLOAT3>& centroids, std::vector<int>& indices, int start, int count, std::vector<BoundingVolume>& nodes, int self);

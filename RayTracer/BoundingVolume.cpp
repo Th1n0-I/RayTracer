@@ -5,10 +5,10 @@ using namespace DirectX;
 using namespace RayTracer;
 
 static constexpr int kBins = 12;
-static constexpr float C_TRAV = 1.0f;
-static constexpr float C_ISECT = 2.0f;
+static constexpr float C_TRAV = 4.0f;
+static constexpr float C_ISECT = 1.0f;
 
-struct Bin { Bounds bounds; int count = 0; };
+struct Bin { AABB bounds; int count = 0; };
 
 float FindBestSplit(const std::vector<Triangle>& tris,
 	const std::vector<XMFLOAT3>& centroids,
@@ -20,7 +20,7 @@ float FindBestSplit(const std::vector<Triangle>& tris,
 	bestBin = -1;
 	float bestCost = FLT_MAX;
 
-	Bounds cb;
+	AABB cb;
 	for (int i = start; i < start + count; i++) 
 		cb.Grow(centroids[indices[i]]);
 	
@@ -43,14 +43,14 @@ float FindBestSplit(const std::vector<Triangle>& tris,
 		}
 
 		float rightTerm[kBins - 1];
-		Bounds rb; int rc = 0;
+		AABB rb; int rc = 0;
 		for (int i = kBins - 1; i > 0; i--) {
 			rb.Grow(bins[i].bounds);
 			rc += bins[i].count;
 			rightTerm[i - 1] = rc ? rb.Area() * rc : 0.0f;
 		}
 
-		Bounds lb; int lc = 0;
+		AABB lb; int lc = 0;
 		for (int i = 0; i < kBins; i++) {
 			lb.Grow(bins[i].bounds);
 			lc += bins[i].count;
@@ -90,8 +90,8 @@ namespace RayTracer {
 		return false;
 	}
 
-	Bounds ComputeBounds(std::vector<Triangle>& tris, std::vector<int> indices, int start, int count) {
-		Bounds b;
+	AABB ComputeBounds(std::vector<Triangle>& tris, std::vector<int> indices, int start, int count) {
+		AABB b;
 		for (int i = start; i < start + count; i++) {
 			b.Grow(tris[indices[i]].v0);
 			b.Grow(tris[indices[i]].v1);
@@ -115,7 +115,7 @@ namespace RayTracer {
 			return self;
 		}
 
-		Bounds cb;
+		AABB cb;
 		for (int i = start; i < start + count; i++) cb.Grow(centroids[indices[i]]);
 
 		float cmin = Axis(cb.min, bestAxis);

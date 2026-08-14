@@ -30,13 +30,7 @@ namespace RayTracer {
 	class BoundingVolume {
 	public:
 		
-		bool RayBoundVolumeIntersect(const Ray& ray,
-			const std::vector<Triangle>& triangles,
-			const std::vector<int>& indices,
-			HitData& data,
-			std::vector<Material>& materials,
-			DirectX::XMFLOAT3& divRayDir,
-			std::vector<BoundingVolume>& nodes) const;
+		
 
 		// When not leaf, child 1 / 2 index. When leaf, triangle vector start / end index
 		int m_index = 0;
@@ -44,5 +38,15 @@ namespace RayTracer {
 		AABB bounds;
 	};
 
+	bool RayBoundVolumeIntersect(const Ray& ray,
+		const std::vector<Triangle>& triangles,
+		const std::vector<int>& indices,
+		HitData& data,
+		std::vector<Material>& materials,
+		DirectX::XMFLOAT3& divRayDir,
+		std::vector<BoundingVolume>& nodes, int indx);
 	int Build(std::vector<Triangle>& tris, std::vector<DirectX::XMFLOAT3>& centroids, std::vector<int>& indices, int start, int count, std::vector<BoundingVolume>& nodes, int self);
+	bool Occluded(const Ray& ray, const std::vector<Triangle>& triangles,
+		std::vector<int>& indices, std::vector<BoundingVolume>& nodes,
+		int indx, DirectX::XMFLOAT3& divDir, float maxT, std::vector<Material>& materials);
 }

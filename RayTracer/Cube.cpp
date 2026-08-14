@@ -37,7 +37,7 @@ namespace RayTracer {
 		};
 
 		for (int i = 0; i < indx.size(); i+=3) {
-			int index = tris.size() + i / 3;
+			int index = (int)tris.size() + i / 3;
 			indices.push_back(index);
 		}
 

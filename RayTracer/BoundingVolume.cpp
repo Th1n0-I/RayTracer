@@ -69,14 +69,14 @@ float FindBestSplit(const std::vector<Triangle>& tris,
 
 namespace RayTracer {
 
-	bool AABBIntersect(const Ray& ray, XMFLOAT3 min, XMFLOAT3 max, HitData& data, XMFLOAT3 divDir, float& hitDist) {
-		XMFLOAT3 tLow = { (min.x - XMVectorGetX(ray.position)) * divDir.x,
-		(min.y - XMVectorGetY(ray.position))* divDir.y,
-		(min.z - XMVectorGetZ(ray.position))* divDir.z };
+	bool AABBIntersect(const Ray& ray, AABB bounds, HitData& data, XMFLOAT3 divDir, float& hitDist) {
+		XMFLOAT3 tLow = { (bounds.min.x - XMVectorGetX(ray.position)) * divDir.x,
+		(bounds.min.y - XMVectorGetY(ray.position))* divDir.y,
+		(bounds.min.z - XMVectorGetZ(ray.position))* divDir.z };
 
-		XMFLOAT3 tHigh = { (max.x - XMVectorGetX(ray.position)) * divDir.x,
-		(max.y - XMVectorGetY(ray.position))* divDir.y,
-		(max.z - XMVectorGetZ(ray.position))* divDir.z };
+		XMFLOAT3 tHigh = { (bounds.max.x - XMVectorGetX(ray.position)) * divDir.x,
+		(bounds.max.y - XMVectorGetY(ray.position))* divDir.y,
+		(bounds.max.z - XMVectorGetZ(ray.position))* divDir.z };
 
 		XMFLOAT3 tClose = { fminf(tLow.x, tHigh.x), fminf(tLow.y, tHigh.y), fminf(tLow.z, tHigh.z) };
 		XMFLOAT3 tFar = { fmaxf(tLow.x, tHigh.x), fmaxf(tLow.y, tHigh.y), fmaxf(tLow.z, tHigh.z) };
@@ -138,21 +138,21 @@ namespace RayTracer {
 		return self;
 	}
 
-	bool BoundingVolume::RayBoundVolumeIntersect(const Ray& ray,
+	/*bool RayBoundVolumeIntersect(const Ray& ray,
 		const std::vector<Triangle>& triangles,
 		const std::vector<int>& indices, 
 		HitData& data, 
 		std::vector<Material>& materials, 
 		XMFLOAT3& divRayDir, 
-		std::vector<BoundingVolume>& nodes) const {
+		std::vector<BoundingVolume>& nodes, int indx) {
 
 		
 
 		data.nodeCount++;
 		
-		if (m_count > 0) {
+		if (nodes[indx].m_count > 0) {
 			bool hitAnything = false;
-			for (int i = m_index; i < m_index + m_count; i++)
+			for (int i = nodes[indx].m_index; i < nodes[indx].m_index + nodes[indx].m_count; i++)
 				if (RayTriangle(ray, triangles[indices[i]], 0.01f, data.t, data, materials))
 					hitAnything = true;
 			return hitAnything;
@@ -162,16 +162,115 @@ namespace RayTracer {
 
 		float child1Dist = 0;
 		float child2Dist = 0;
-		bool child1Enter = AABBIntersect(ray, nodes[m_index].bounds.min, nodes[m_index].bounds.max, data, divRayDir, child1Dist);
-		bool child2Enter = AABBIntersect(ray, nodes[m_index + 1].bounds.min, nodes[m_index + 1].bounds.max, data, divRayDir, child2Dist);
+		bool child1Enter = AABBIntersect(ray, nodes[nodes[indx].m_index].bounds.min, nodes[nodes[indx].m_index].bounds.max, data, divRayDir, child1Dist);
+		bool child2Enter = AABBIntersect(ray, nodes[nodes[indx].m_index + 1].bounds.min, nodes[nodes[indx].m_index + 1].bounds.max, data, divRayDir, child2Dist);
 		if (child1Dist < child2Dist) {
-			if (child1Enter) if (nodes[m_index].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
-			if (child2Enter && child2Dist <= data.t) if (nodes[m_index + 1].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
+			if (child1Enter) if (RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes, nodes[indx].m_index)) hitAnything = true;
+			if (child2Enter && child2Dist <= data.t) if (RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes, nodes[indx].m_index + 1)) hitAnything = true;
 			}
 		else { 
-			if (child2Enter) if (nodes[m_index + 1].RayBoundVolumeIntersect(ray, triangles,indices, data, materials, divRayDir, nodes)) hitAnything = true;
-			if (child1Enter && child1Dist <= data.t) if (nodes[m_index].RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes)) hitAnything = true;
+			if (child2Enter) if (RayBoundVolumeIntersect(ray, triangles,indices, data, materials, divRayDir, nodes, nodes[indx].m_index + 1)) hitAnything = true;
+			if (child1Enter && child1Dist <= data.t) if (RayBoundVolumeIntersect(ray, triangles, indices, data, materials, divRayDir, nodes, nodes[indx].m_index)) hitAnything = true;
 		}
 		return hitAnything;
+	}*/
+
+	bool RayBoundVolumeIntersect(const Ray& ray,
+		const std::vector<Triangle>& triangles,
+		const std::vector<int>& indices,
+		HitData& data,
+		std::vector<Material>& materials,
+		XMFLOAT3& divRayDir,
+		std::vector<BoundingVolume>& nodes, int indx) {
+		
+		bool hitAnything = false;
+
+		int stack[64];
+		float dstack[64];
+		int sp = 0;
+		int current = indx;
+
+		while (true) {
+			// The node is a leaf
+			if (nodes[current].m_count > 0) {
+				for (int i = nodes[current].m_index; i < nodes[current].m_index + nodes[current].m_count; i++) {
+					if (RayTriangle(ray, triangles[indices[i]], 0.01f, data.t, data, materials)) hitAnything = true;
+				}
+				if (sp == 0) break;
+
+				bool found = false;
+				while (sp > 0) {
+					int candidate = stack[--sp];
+					if (dstack[sp] <= data.t) { current = candidate; found = true; break; }
+				}
+				if (!found) break;
+			}
+			// The node is not a leaf
+			else {
+				int child1 = nodes[current].m_index; int child2 = nodes[current].m_index + 1;
+				float d1, d2;
+				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, data, divRayDir, d1);
+				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, data, divRayDir, d2);
+
+				if (!hit1 && !hit2) { 
+					if (sp == 0) break; 
+					bool found = false;
+					while (sp > 0) {
+						int candidate = stack[--sp];
+						if (dstack[sp] <= data.t) { current = candidate; found = true; break; }
+					}
+					if (!found) break;
+				}
+				else if (hit1 && hit2) {
+					stack[sp] = d1 > d2 ? child1 : child2;
+					dstack[sp] = d1 > d2 ? d1 : d2;
+					sp++;
+					current = d1 > d2 ? child2 : child1;
+				}
+				else { current = hit1 ? child1 : child2; }
+			}
+		}
+
+		return hitAnything;
+	}
+
+	bool Occluded(const Ray& ray, const std::vector<Triangle>& triangles,
+		std::vector<int>& indices, std::vector<BoundingVolume>& nodes,
+		int indx, XMFLOAT3& divDir, float maxT, std::vector<Material>& materials) {
+
+		int stack[64];
+		int sp = 0;
+		int current = indx;
+
+		HitData hitdata{};
+
+		while (true) {
+			auto& currentNode = nodes[current];
+			if (currentNode.m_count > 0) {
+				for (int i = currentNode.m_index; i < currentNode.m_index + currentNode.m_count; i++) {
+					if (RayTriangle(ray, triangles[indices[i]], 0.01f, maxT, hitdata, materials)) return true;
+				}
+				if (sp == 0) break;
+				current = stack[--sp];
+			}
+			else {
+				int child1 = currentNode.m_index; int child2 = child1 + 1;
+				float d1, d2;
+				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, hitdata, divDir, d1);
+				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, hitdata, divDir, d2);
+
+				if (!hit1 && !hit2) { if (sp == 0) break; current = stack[--sp]; }
+				else if (hit1 && hit2) {
+					if (d1 < maxT && d2 < maxT) { current = child1;  stack[sp++] = child2; }
+					else if (d1 < maxT && d2 > maxT) { current = child1; }
+					else if (d2 < maxT && d1 > maxT) { current = child2; }
+					else { if (sp == 0) break; current = stack[--sp]; }
+				}
+				else {
+					current = hit1 ? child1 : child2;
+				}
+			}
+		}
+		return false;
 	}
 }

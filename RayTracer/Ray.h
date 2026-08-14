@@ -12,7 +12,7 @@ namespace RayTracer {
 		float t = 10000.0f;
 		DirectX::XMVECTOR point{};
 		DirectX::XMVECTOR normal{};
-		int material;
+		int material = 0;
 		int nodeCount = 0;
 	};
 }

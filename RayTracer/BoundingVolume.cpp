@@ -69,28 +69,31 @@ float FindBestSplit(const std::vector<Triangle>& tris,
 
 namespace RayTracer {
 
-	bool AABBIntersect(const Ray& ray, AABB bounds, HitData& data, XMFLOAT3 divDir, float& hitDist) {
-		XMFLOAT3 tLow = { (bounds.min.x - XMVectorGetX(ray.position)) * divDir.x,
-		(bounds.min.y - XMVectorGetY(ray.position))* divDir.y,
-		(bounds.min.z - XMVectorGetZ(ray.position))* divDir.z };
+	bool AABBIntersect(const Ray& ray, AABB bounds, HitData& data, XMVECTOR divDir, float& hitDist) {
+		XMVECTOR minBounds = XMLoadFloat3(&bounds.min);
+		XMVECTOR maxBounds = XMLoadFloat3(&bounds.max);
 
-		XMFLOAT3 tHigh = { (bounds.max.x - XMVectorGetX(ray.position)) * divDir.x,
-		(bounds.max.y - XMVectorGetY(ray.position))* divDir.y,
-		(bounds.max.z - XMVectorGetZ(ray.position))* divDir.z };
+		XMVECTOR tLow = (minBounds - ray.position) * divDir;
 
-		XMFLOAT3 tClose = { fminf(tLow.x, tHigh.x), fminf(tLow.y, tHigh.y), fminf(tLow.z, tHigh.z) };
-		XMFLOAT3 tFar = { fmaxf(tLow.x, tHigh.x), fmaxf(tLow.y, tHigh.y), fmaxf(tLow.z, tHigh.z) };
+		XMVECTOR tHigh = (maxBounds - ray.position) * divDir;
 
-		float close = fmaxf(tClose.x, fmaxf(tClose.y, tClose.z));
-		float far = fminf(tFar.x, fminf(tFar.y, tFar.z));
+		XMVECTOR tClose = XMVectorMin(tLow, tHigh);
+		XMVECTOR tFar = XMVectorMax(tLow, tHigh);
+
+		XMFLOAT3 tc, tf;
+		XMStoreFloat3(&tc, tClose);
+		XMStoreFloat3(&tf, tFar);
+
+		float close = fmaxf(tc.x, fmaxf(tc.y, tc.z));
+		float far = fminf(tf.x, fminf(tf.y, tf.z));
 
 		hitDist = close;
 
-		if (close <= far && close <= data.t && far >= 0.0f) return true;
-		return false;
+		if (close > far || close > data.t || far < 0.0f) return false;
+		return true;
 	}
 
-	AABB ComputeBounds(std::vector<Triangle>& tris, std::vector<int> indices, int start, int count) {
+	AABB ComputeBounds(std::vector<Triangle>& tris, std::vector<int>& indices, int start, int count) {
 		AABB b;
 		for (int i = start; i < start + count; i++) {
 			b.Grow(tris[indices[i]].v0);
@@ -209,8 +212,8 @@ namespace RayTracer {
 			else {
 				int child1 = nodes[current].m_index; int child2 = nodes[current].m_index + 1;
 				float d1, d2;
-				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, data, divRayDir, d1);
-				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, data, divRayDir, d2);
+				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, data, XMLoadFloat3(&divRayDir), d1);
+				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, data, XMLoadFloat3(&divRayDir), d2);
 
 				if (!hit1 && !hit2) { 
 					if (sp == 0) break; 
@@ -243,6 +246,7 @@ namespace RayTracer {
 		int current = indx;
 
 		HitData hitdata{};
+		hitdata.t = maxT;
 
 		while (true) {
 			auto& currentNode = nodes[current];
@@ -256,8 +260,8 @@ namespace RayTracer {
 			else {
 				int child1 = currentNode.m_index; int child2 = child1 + 1;
 				float d1, d2;
-				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, hitdata, divDir, d1);
-				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, hitdata, divDir, d2);
+				bool hit1 = AABBIntersect(ray, nodes[child1].bounds, hitdata, XMLoadFloat3(&divDir), d1);
+				bool hit2 = AABBIntersect(ray, nodes[child2].bounds, hitdata, XMLoadFloat3(&divDir), d2);
 
 				if (!hit1 && !hit2) { if (sp == 0) break; current = stack[--sp]; }
 				else if (hit1 && hit2) {

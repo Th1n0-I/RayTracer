@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <chrono>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include "Window.h"
 #include "Camera.h"
 #include "Sphere.h"
@@ -386,6 +388,70 @@ int main()
 
     float dt = 0.0f;
 
+    const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
+
+    std::mutex mtx;
+    std::condition_variable cvStart, cvDone;
+    unsigned generation = 0;
+    unsigned remaining = 0;
+    bool shutdown = false;
+
+    int fW = 0, fH = 0, fSamples = 0, fSampleCount = 0, fFrame = 0;
+    
+    std::vector<std::thread> workers;
+    workers.reserve(threadCount);
+
+    for (unsigned ti = 0; ti < threadCount; ti++) {
+        workers.emplace_back([&, ti] {
+            unsigned myGeneration = 0;
+
+            while (true) {
+                int w, h, samples, sampleCount, frame;
+                {
+                    std::unique_lock<std::mutex> lock(mtx);
+                    cvStart.wait(lock, [&] {return shutdown || generation != myGeneration; });
+
+                    if (shutdown) return;
+
+                    myGeneration = generation;
+                    w = fW; h = fH;
+                    samples = fSamples;
+                    sampleCount = fSampleCount;
+                    frame = fFrame;
+                }
+
+                for (int y = (int)ti; y < h; y += (int)threadCount) {
+                    for (int x = 0; x < w; x++) {
+                        const size_t idx = (size_t)y * w + x;
+
+                        uint32_t rng = Hash((uint32_t)idx ^ Hash((uint32_t)frameCount)) | 1u;
+
+                        DirectX::XMFLOAT3 sum{ 0.0f, 0.0f, 0.0f };
+                        for (int sp = 0; sp < samples; sp++) {
+                            const float s = (x + RandFloat(rng)) / (float)w;
+                            const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
+
+                            DirectX::XMFLOAT3 c;
+                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(
+                                s, t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 8, rng, nodes, indices, rootNodeIndex));
+                            sum.x += c.x; sum.y += c.y; sum.z += c.z;
+                        }
+
+                        accum[idx].x += sum.x;
+                        accum[idx].y += sum.y;
+                        accum[idx].z += sum.z;
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    remaining--;
+                }
+                cvDone.notify_one();
+            }
+            });
+    }
+
     while (window.ProccessMessages()) {
         auto t0 = std::chrono::steady_clock::now();
         frameCount++;
@@ -418,7 +484,13 @@ int main()
 
         const int samplesPerFrame = moved ? 1 : 4;
 
-        const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
+        /*const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
+
+        std::mutex mtx;
+        std::condition_variable cvStart, cvDone;
+
+        int fW = 0, fH = 0, fSamples = 0, fSampleCount = 0, 
+
         std::vector<std::thread> workers;
         workers.reserve(threadCount);
         sampleCount += samplesPerFrame;
@@ -494,7 +566,7 @@ int main()
         auto now = std::chrono::steady_clock::now();
         dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
-        printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);
+        printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);*/
         
     }
 }

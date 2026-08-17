@@ -161,8 +161,8 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         
 
         if (!hitAnything) {
-            //radiance = DirectX::XMVectorAdd(radiance,
-                //DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
+            radiance = DirectX::XMVectorAdd(radiance,
+                DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
         }
 
@@ -226,8 +226,9 @@ int main()
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 600, 600);
     Camera camera;
-    camera.position = { 278.0f, 273.0f, -800.0f };
-    camera.moveSpeed = 300.0f;
+    camera.position = { -1300.0f, 300.0f, -38.0f };
+    camera.yaw = 1.5708f;
+    camera.moveSpeed = 600.0f;
     Material defaultMatWhite = {
         {0.73f, 0.73f, 0.73f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
     };
@@ -258,9 +259,7 @@ int main()
 
     std::vector<uint32_t> framebuffer;
     std::vector<DirectX::XMFLOAT3> accum;
-    std::vector<Sphere> spheres = { 
-        //{{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, },{0.0f, 1.0f, 0.0f}, 1.0f,},
-    };
+    std::vector<Sphere> spheres = {};
 
     std::vector<DirectX::XMFLOAT3> verts = {
         {  0.0f,   0.0f,   0.0f}, // Left - Bottom - Forward - 0
@@ -288,38 +287,12 @@ int main()
         {100.0f,  80.0f, 500.0f},   
     };
 
-    std::vector<Triangle> triangles = {
-        // Floor
-        //{verts[0], verts[1], verts[5], 0},
-        //{verts[0], verts[5], verts[4], 0},
-        // Ceiling
-        //{verts[3], verts[12], verts[9], 0},
-        //{verts[3], verts[9], verts[13], 0},
-        //{verts[13], verts[10], verts[14], 0},
-        //{verts[13], verts[14], verts[2], 0},
-        //{verts[11], verts[15], verts[6], 0},
-        //{verts[11], verts[6], verts[14], 0},
-        //{verts[12], verts[7], verts[15], 0},
-        //{verts[12], verts[15], verts[8], 0},
-        // Left wall - Red
-        //{verts[0], verts[1], verts[2], 2},
-        //{verts[0], verts[2], verts[3], 2},
-        // Right wall - Green
-        //{verts[4], verts[5], verts[6], 1},
-        //{verts[4], verts[6], verts[7], 1},
-        // Back wall - white
-        //{verts[1], verts[2], verts[6], 0},
-        //{verts[1], verts[6], verts[5], 0},
-        // Light
-        //{verts[8], verts[11], verts[10], 3},
-        //{verts[8], verts[10], verts[9], 3},
-
-    };
+    std::vector<Triangle> triangles = {};
 
     int subX = 4;
     int subY = 4;
 
-    std::vector<Quad> quads{ { verts[0],verts[1],verts[2],verts[3], 2, triangles, subX, subY },
+    std::vector<Quad> quads{ /*{verts[0],verts[1],verts[2],verts[3], 2, triangles, subX, subY},
     { verts[4],verts[5],verts[6],verts[7], 1, triangles, subX, subY },
     { verts[1],verts[2],verts[6],verts[5], 0, triangles, subX, subY },
     { verts[8],verts[11],verts[10],verts[9], 3, triangles, 1, 1 },
@@ -327,10 +300,13 @@ int main()
     { verts[13],verts[10],verts[14],verts[2], 0, triangles, subX, subY },
     { verts[11],verts[15],verts[6],verts[14], 0, triangles, subX, subY },
     { verts[12],verts[7],verts[15],verts[8], 0, triangles, subX, subY },
-    { verts[0],verts[1],verts[5],verts[4], 0, triangles, subX, subY } };
+    { verts[0],verts[1],verts[5],verts[4], 0, triangles, subX, subY }*/ };
 
     std::vector<Mesh> meshes = {
-        {{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 0, triangles, "meshFiles/suzanne.obj"}
+        //{{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 0, triangles, "meshFiles/suzanne.obj"} // Suzanne
+        //{{278.0f, -4.0f, 280.0f}, {170.0f, 170.0f, 170.0f}, {0.0f, -90.0f, 0.0f}, 0, triangles, "meshFiles/bunny.obj"} // Stanford Bunny
+        //{{268.0f, 99.0f, 274.0f},{350.0f, 350.0f, 350.0f},{0.0f, 90.0f, 0.0f}, 0, triangles, "meshFiles/dragon.obj"} // Stanford Dragon
+        {{0.0f, 126.0f, 0.0f},{ 1.0f, 1.0f, 1.0f},{0.0f, 0.0f, 0.0f}, 0, triangles, "meshFiles/sponza.obj"} // Crytic Sponza !! Scene dont include cornell box and move camera to { -1700.0f, 200.0f, -40.0f }
     };
 
     std::vector<Cube> cubes = {
@@ -516,8 +492,8 @@ int main()
         {
             std::lock_guard<std::mutex> lock(mtx);
          
-            fW = window.Width();
-            fH = window.Height();
+            fW = w;
+            fH = h;
             fSamples = samplesPerFrame;
             fSampleCount = sampleCount;
             remaining = threadCount;

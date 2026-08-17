@@ -424,7 +424,7 @@ int main()
                     for (int x = 0; x < w; x++) {
                         const size_t idx = (size_t)y * w + x;
 
-                        uint32_t rng = Hash((uint32_t)idx ^ Hash((uint32_t)frameCount)) | 1u;
+                        uint32_t rng = Hash((uint32_t)idx ^ Hash((uint32_t)frame)) | 1u;
 
                         DirectX::XMFLOAT3 sum{ 0.0f, 0.0f, 0.0f };
                         for (int sp = 0; sp < samples; sp++) {
@@ -440,6 +440,33 @@ int main()
                         accum[idx].x += sum.x;
                         accum[idx].y += sum.y;
                         accum[idx].z += sum.z;
+
+                        const static bool debug = false;
+
+                        float rf;
+                        float gf;
+                        float bf;
+
+                        if (!debug)
+                        {
+                            const float inv = 1.0f / (float)sampleCount;
+                            rf = powf(accum[idx].x * inv, 1.0f / 2.2f);
+                            gf = powf(accum[idx].y * inv, 1.0f / 2.2f);
+                            bf = powf(accum[idx].z * inv, 1.0f / 2.2f);
+                        }
+                        else {
+                            rf = sum.x;
+                            gf = sum.y;
+                            bf = sum.z;
+                        }
+
+                        if (rf > 1.0f) rf = 1.0f;
+                        if (gf > 1.0f) gf = 1.0f;
+                        if (bf > 1.0f) bf = 1.0f;
+
+                        framebuffer[idx] = ((uint32_t)(255.0f * rf) << 16)
+                            | ((uint32_t)(255.0f * gf) << 8)
+                            | ((uint32_t)(255.0f * bf));
                     }
                 }
 
@@ -484,73 +511,27 @@ int main()
 
         const int samplesPerFrame = moved ? 1 : 4;
 
-        /*const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency());
-
-        std::mutex mtx;
-        std::condition_variable cvStart, cvDone;
-
-        int fW = 0, fH = 0, fSamples = 0, fSampleCount = 0, 
-
-        std::vector<std::thread> workers;
-        workers.reserve(threadCount);
         sampleCount += samplesPerFrame;
-        for (unsigned ti = 0; ti < threadCount; ti++) {
-            workers.emplace_back([&, ti] {
-                for (int y = (int)ti; y < h; y += (int)threadCount) {
-                    for (int x = 0; x < w; x++) {
-                        const size_t idx = (size_t)y * w + x;
 
-                        uint32_t rng = Hash((uint32_t)idx ^ Hash((uint32_t)frameCount)) | 1u;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+         
+            fW = window.Width();
+            fH = window.Height();
+            fSamples = samplesPerFrame;
+            fSampleCount = sampleCount;
+            remaining = threadCount;
+            fFrame = frameCount;
+            generation++;
+        }
+        cvStart.notify_all();
 
-                        DirectX::XMFLOAT3 sum{ 0.0f, 0.0f, 0.0f };
-                        for(int sp = 0; sp < samplesPerFrame; sp++){
-                            const float s = (x + RandFloat(rng)) / (float)w;
-                            const float t = (h - 1 - y + RandFloat(rng)) / (float)h;
-                            
-                            DirectX::XMFLOAT3 c;
-                            DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(
-                                s,t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 8, rng, nodes, indices, rootNodeIndex));
-                            sum.x += c.x; sum.y += c.y; sum.z += c.z;
-                        }
-
-                        accum[idx].x += sum.x;
-                        accum[idx].y += sum.y;
-                        accum[idx].z += sum.z;  
-
-                        const static bool debug = false;
-
-                        float rf;
-                        float gf;
-                        float bf;
-
-                        if (!debug) 
-                        {
-                            const float inv = 1.0f / (float)sampleCount;
-                            rf = powf(accum[idx].x * inv, 1.0f / 2.2f);
-                            gf = powf(accum[idx].y * inv, 1.0f / 2.2f);
-                            bf = powf(accum[idx].z * inv, 1.0f / 2.2f);
-                        }
-                        else {
-                            rf = sum.x;
-                            gf = sum.y;
-                            bf = sum.z;
-                        }
-
-                        if (rf > 1.0f) rf = 1.0f;
-                        if (gf > 1.0f) gf = 1.0f;
-                        if (bf > 1.0f) bf = 1.0f;
-
-                        framebuffer[idx] = ((uint32_t)(255.0f * rf) << 16)
-                            | ((uint32_t)(255.0f * gf) << 8)
-                            | ((uint32_t)(255.0f * bf));
-                    }
-                }
-            });
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            cvDone.wait(lock, [&] {return remaining == 0; });
         }
 
-        for (auto& t : workers) {
-            t.join();
-        }
+        
         auto t1 = std::chrono::steady_clock::now();
         window.Present(framebuffer.data(), w, h);
         auto t2 = std::chrono::steady_clock::now();
@@ -566,19 +547,14 @@ int main()
         auto now = std::chrono::steady_clock::now();
         dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
-        printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);*/
+        printf("%.2f ms (%.0f fps)\n", dt * 1000.0f, 1.0f / dt);
         
     }
+
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        shutdown = true;
+    }
+    cvStart.notify_all();
+    for (auto& t : workers) t.join();
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
-

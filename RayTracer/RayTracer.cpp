@@ -17,6 +17,7 @@
 #include "Mesh.h"
 #include "BoundingVolume.h"
 #include "Quad.h"
+#include "Scene.h"
 
 using namespace RayTracer;
 
@@ -81,7 +82,7 @@ LightSample SampleTriangleLight(const Triangle& tri, DirectX::XMVECTOR from, uin
 
 
 DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR normal,
-    const std::vector<Sphere>& spheres, BoundingVolume& bvh , const std::vector<Triangle>& triangles, const std::vector<Cube>& cubes,
+    const std::vector<Sphere>& spheres, BoundingVolume& bvh , const std::vector<Triangle>& triangles,
     const std::vector<LightRef>& lights, std::vector<Material>& materials ,uint32_t& rng, std::vector<BoundingVolume>& nodes,
     std::vector<int>& indices, int rootIndex) {
 
@@ -130,8 +131,8 @@ DirectX::XMVECTOR sampleDirectLight(DirectX::XMVECTOR point, DirectX::XMVECTOR n
     return DirectX::XMVectorScale(light.emission, geom * lightCountScale);
 }
 
-DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, BoundingVolume& bvh ,const std::vector<Triangle>& triangles, std::vector<Cube>& cubes, std::vector<Material>& materials, const std::vector<LightRef>& lights,
-    int maxBounces, uint32_t& rng, std::vector<BoundingVolume>& nodes, std::vector<int>& indices, int rootIndex) {
+DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, BoundingVolume& bvh ,const std::vector<Triangle>& triangles, std::vector<Material>& materials, const std::vector<LightRef>& lights,
+    int maxBounces, uint32_t& rng, std::vector<BoundingVolume>& nodes, std::vector<int>& indices, int rootIndex, bool useSky) {
     DirectX::XMVECTOR throughput = DirectX::XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
     DirectX::XMVECTOR radiance = DirectX::XMVectorZero();
 
@@ -161,8 +162,9 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         
 
         if (!hitAnything) {
-            radiance = DirectX::XMVectorAdd(radiance,
-                DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
+            if(useSky)
+                radiance = DirectX::XMVectorAdd(radiance,
+                    DirectX::XMVectorMultiply(throughput, SkyColor(ray.direction)));
             break;
         }
 
@@ -174,7 +176,7 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
         }
 
         if (material.specularChance < 1.0f) {
-            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, bvh, triangles, cubes, lights, materials, rng, nodes, indices, rootIndex);
+            DirectX::XMVECTOR direct = sampleDirectLight(hit.point, hit.normal, spheres, bvh, triangles, lights, materials, rng, nodes, indices, rootIndex);
             direct = DirectX::XMVectorMultiply(direct, DirectX::XMLoadFloat3(&material.color));
             direct = DirectX::XMVectorScale(direct, 1.0f - material.specularChance);
             radiance = DirectX::XMVectorAdd(radiance, DirectX::XMVectorMultiply(throughput, direct));
@@ -222,97 +224,22 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
 int main()
 {
     
+    Scene currentScene = GetSphereCornellBox();
 
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 600, 600);
     Camera camera;
-    camera.position = { -1300.0f, 300.0f, -38.0f };
-    camera.yaw = 1.5708f;
-    camera.moveSpeed = 600.0f;
-    Material defaultMatWhite = {
-        {0.73f, 0.73f, 0.73f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
-    };
+    camera.position = currentScene.cameraPos;
+    camera.yaw = currentScene.yaw; camera.pitch = currentScene.pitch;
+    camera.moveSpeed = currentScene.moveSpeed;
 
-    Material defaultMatRed = {
-        {0.63f, 0.065f, 0.05f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
-    };
-
-    Material defaultMatGreen = {
-        {0.14f, 0.45f, 0.091f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
-    };
-
-    Material defaultLightWhite = {
-        {0.0f, 0.0f, 0.0f}, {18.4f, 15.6f, 8.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f
-    };
-
-    Material defaultMirror = {
-        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 1.0f, 0.2f
-    };
-
-    std::vector<Material> materials = {
-        defaultMatWhite,
-        defaultMatGreen,
-        defaultMatRed,
-        defaultLightWhite,
-        defaultMirror,
-    };
+    std::vector<Material> materials = currentScene.materials;
 
     std::vector<uint32_t> framebuffer;
     std::vector<DirectX::XMFLOAT3> accum;
-    std::vector<Sphere> spheres = {};
+    std::vector<Sphere> spheres = currentScene.spheres;
 
-    std::vector<DirectX::XMFLOAT3> verts = {
-        {  0.0f,   0.0f,   0.0f}, // Left - Bottom - Forward - 0
-        {  0.0f,   0.0f, 559.2f}, // Left - Bottom - Back - 1
-        {  0.0f, 548.8f, 559.2f}, // Left - Top - Back - 2
-        {  0.0f, 548.8f,   0.0f}, // Left - Top - Forward - 3
-        {556.0f,   0.0f,   0.0f}, // Right - Bottom - Forward - 4
-        {556.0f,   0.0f, 559.2f}, // Right - Bottom - Back - 5
-        {556.0f, 548.8f, 559.2f}, // Right - Top - Back - 6
-        {556.0f, 548.8f,   0.0f}, // Right - Top - Forward - 7
-        // Light
-        {213.0f, 548.8f, 227.0f}, // Left - Forward - 8
-        {213.0f, 548.8f, 332.0f}, // Left - Back - 9
-        {343.0f, 548.8f, 332.0f}, // Right - Back - 10
-        {343.0f, 548.8f, 227.0f}, // Right - Forward - 11
-        // Ceiling seams
-        {213.0f, 548.8f,   0.0f}, // Left - Forward - 12
-        {  0.0f, 548.8f, 332.0f}, // Left - Back - 13
-        {343.0f, 548.8f, 559.2f}, // Right - Back - 14
-        {556.0f, 548.8f, 227.0f}, // Right - Forward - 15
-        // Quad test
-        {456.0f,  80.0f, 500.0f},
-        {456.0f, 440.0f, 200.0f},
-        {100.0f, 440.0f, 500.0f},
-        {100.0f,  80.0f, 500.0f},   
-    };
-
-    std::vector<Triangle> triangles = {};
-
-    int subX = 4;
-    int subY = 4;
-
-    std::vector<Quad> quads{ /*{verts[0],verts[1],verts[2],verts[3], 2, triangles, subX, subY},
-    { verts[4],verts[5],verts[6],verts[7], 1, triangles, subX, subY },
-    { verts[1],verts[2],verts[6],verts[5], 0, triangles, subX, subY },
-    { verts[8],verts[11],verts[10],verts[9], 3, triangles, 1, 1 },
-    { verts[3],verts[12],verts[9],verts[13], 0, triangles, subX, subY },
-    { verts[13],verts[10],verts[14],verts[2], 0, triangles, subX, subY },
-    { verts[11],verts[15],verts[6],verts[14], 0, triangles, subX, subY },
-    { verts[12],verts[7],verts[15],verts[8], 0, triangles, subX, subY },
-    { verts[0],verts[1],verts[5],verts[4], 0, triangles, subX, subY }*/ };
-
-    std::vector<Mesh> meshes = {
-        //{{28.6f, 124.8f, 690.4f}, {100.0f, 100.0f, 100.0f}, {0.0f, 180.0f, 0.0f}, 0, triangles, "meshFiles/suzanne.obj"} // Suzanne
-        //{{278.0f, -4.0f, 280.0f}, {170.0f, 170.0f, 170.0f}, {0.0f, -90.0f, 0.0f}, 0, triangles, "meshFiles/bunny.obj"} // Stanford Bunny
-        //{{268.0f, 99.0f, 274.0f},{350.0f, 350.0f, 350.0f},{0.0f, 90.0f, 0.0f}, 0, triangles, "meshFiles/dragon.obj"} // Stanford Dragon
-        {{0.0f, 126.0f, 0.0f},{ 1.0f, 1.0f, 1.0f},{0.0f, 0.0f, 0.0f}, 0, triangles, "meshFiles/sponza.obj"} // Crytic Sponza !! Scene dont include cornell box and move camera to { -1700.0f, 200.0f, -40.0f }
-    };
-
-    std::vector<Cube> cubes = {
-        //{{370.5f, 82.5f, 169.0f}, {83.0f*2, 82.5f*2, 83.0f*2}, {0.0f, 16.6f, 0.0f}, 0, triangles},
-        //{{187.5f, 165.0f, 351.25f}, {83.0f*2, 165.0f*2, 83.0f*2}, {0.0f, -17.6f, 0.0f}, 0, triangles},
-    };
+    std::vector<Triangle> triangles = currentScene.triangles;
 
     std::vector<LightRef> lights;
     for (int i = 0; i < (int)spheres.size(); i++) {
@@ -409,7 +336,7 @@ int main()
 
                             DirectX::XMFLOAT3 c;
                             DirectX::XMStoreFloat3(&c, TracePath(camera.GetRay(
-                                s, t), spheres, nodes[rootNodeIndex], triangles, cubes, materials, lights, 8, rng, nodes, indices, rootNodeIndex));
+                                s, t), spheres, nodes[rootNodeIndex], triangles, materials, lights, 8, rng, nodes, indices, rootNodeIndex, currentScene.useSky));
                             sum.x += c.x; sum.y += c.y; sum.z += c.z;
                         }
 

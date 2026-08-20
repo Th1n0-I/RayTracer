@@ -36,9 +36,18 @@ NEE, or Next Event Estimation, is a method to reduce the amount of samples neede
  
 When measuring performance SPS, or Samples Per Second is used, since I take multiple samples per frame to reduce presenting costs.
 
+All tests were performed in the scenes that I shipped. Taking the first 100 samples as a sample size.
 
+- Box scene: 20.17 SPS
+- Mirror Sphere scene: 18.26 SPS
+- Suzanne scene: 12.08 SPS
+- Bunny scene: 14.70 SPS
+- Dragon scene: 12.31 SPS
+- Sponza scene: 1.44 SPS
 
+The most impactful thing for performance is detail density, how much detail there is and how spread out it is. Even tough the dragon itself is more detailed thamn the whole sponza scene it is concentrated in a small part of the screen, which means most rays aren't impacted. In the sponza scene the detail is spread out and all rays are effectd.
 
+## How to build
+You open the .sln file in visual studio, switch configuration from Debug to Release if it is selected, and the press Build. Very simple 👍 
 
-
-
+Thank you for reading my amazing README ❤️

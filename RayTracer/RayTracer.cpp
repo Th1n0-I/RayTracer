@@ -7,6 +7,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <filesystem>
 #include <condition_variable>
 #include "Window.h"
 #include "Camera.h"
@@ -224,8 +225,11 @@ DirectX::XMVECTOR TracePath(Ray ray, const std::vector<Sphere>& spheres, Boundin
 int main()
 {
     
-    Scene currentScene = GetSphereCornellBox();
-
+    Scene currentScene = GetCubeCornellBox();
+    printf("tris %zu\n", currentScene.triangles.size());
+    char cwd[MAX_PATH];
+    GetCurrentDirectoryA(MAX_PATH, cwd);
+    printf("cwd %s | found %d\n", cwd, GetFileAttributesA("meshFiles/suzanne.obj") != INVALID_FILE_ATTRIBUTES);
     auto lastTime = std::chrono::steady_clock::now();
     Window window(L"Sigma", 600, 600);
     Camera camera;

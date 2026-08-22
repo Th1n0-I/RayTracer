@@ -1,7 +1,6 @@
 ### C++
 # Object files
 *.o
-*.obj
 
 # Precompiled Headers
 *.gch

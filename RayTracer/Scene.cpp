@@ -97,6 +97,19 @@ namespace RayTracer {
         return s;
 	}
 
+    Scene GetCubeCornellBox() {
+        auto s = GetEmptyCornellBox();                    
+
+        Cube shortBlock{
+            { 185.5f,  82.5f, 169.0f }, { 165.0f, 165.0f, 165.0f }, {   0.0f, -17.0f,   0.0f }, 0, s.triangles                                   
+        };
+
+        Cube tallBlock{
+            { 368.5f, 165.0f, 351.0f }, { 165.0f, 330.0f, 165.0f }, {   0.0f,  17.0f,   0.0f }, 0, s.triangles
+        };
+
+        return s;                                      
+    }
     Scene GetSphereCornellBox() {
         auto s = GetEmptyCornellBox();
         s.spheres = {
@@ -109,19 +122,19 @@ namespace RayTracer {
     Scene GetSuzanneCornellBox() {
         auto s = GetEmptyCornellBox();
         Mesh suzanne({ 28.6f, 124.8f, 690.4f }, { 100.0f, 100.0f, 100.0f },
-            { 0.0f, 180.0f, 0.0f }, 0, s.triangles, "meshFiles/suzanne.obj");
+            { 0.0f, 180.0f, 0.0f }, 0, s.triangles, "x64/Release/meshFiles/suzanne.obj");
         return s;
     }
 
     Scene GetBunnyCornellBox() {
         auto s = GetEmptyCornellBox();
-        Mesh Bunny{{ 278.0f, -4.0f, 280.0f }, { 170.0f, 170.0f, 170.0f }, { 0.0f, -90.0f, 0.0f }, 0, s.triangles, "meshFiles/bunny.obj"};
+        Mesh Bunny{{ 278.0f, -4.0f, 280.0f }, { 170.0f, 170.0f, 170.0f }, { 0.0f, -90.0f, 0.0f }, 0, s.triangles, "x64/Release/meshFiles/bunny.obj"};
         return s;
     }
 
     Scene GetDragonCornellBox() {
         auto s = GetEmptyCornellBox();
-        Mesh dragon{ { 268.0f, 99.0f, 274.0f }, { 350.0f, 350.0f, 350.0f }, { 0.0f, 90.0f, 0.0f },	0, s.triangles, "meshFiles/dragon.obj" };
+        Mesh dragon{ { 268.0f, 99.0f, 274.0f }, { 350.0f, 350.0f, 350.0f }, { 0.0f, 90.0f, 0.0f },	0, s.triangles, "x64/Release/meshFiles/dragon.obj" };
         return s;
     }
 
@@ -155,7 +168,7 @@ namespace RayTracer {
 
         s.materials = materials;
 
-        Mesh Sponza{ {0, 126, 0} ,{1, 1, 1} ,{0, 0, 0} , 0 , s.triangles, "meshFiles/sponza.obj" };
+        Mesh Sponza{ {0, 126, 0} ,{1, 1, 1} ,{0, 0, 0} , 0 , s.triangles, "x64/Release/meshFiles/sponza.obj" };
         s.cameraPos = { -1300.0f, 300.0f, -38.0f };
         s.yaw = 1.57f; s.pitch = 0.0f; s.moveSpeed = 600.0f;
         s.useSky = true;

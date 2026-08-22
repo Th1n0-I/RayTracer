@@ -48,6 +48,18 @@ All tests were performed in the scenes that I shipped. Taking the first 100 samp
 The most impactful thing for performance is detail density, how much detail there is and how spread out it is. Even tough the dragon itself is more detailed thamn the whole sponza scene it is concentrated in a small part of the screen, which means most rays aren't impacted. In the sponza scene the detail is spread out and all rays are effectd.
 
 ## How to build
-You open the .sln file in visual studio, switch configuration from Debug to Release if it is selected, and the press Build. Very simple 👍 
+**Requirements**
+- Visual studio 2022 or newer with "Desktop development with C++" workload
+- Windows 10 or 11
+- x64
+
+**Steps**
+- Open "Raytracer.sln" in vs
+- Change configuration to Release x64
+- Build with ctrl + F5
+
+## How to run from release download
+- Extract the .rar file you chose to download
+- launch "Raytracer.exe"
 
 Thank you for reading my amazing README ❤️
